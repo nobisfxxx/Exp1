@@ -1,17 +1,12 @@
-from instagrapi import Client
 import time
-from datetime import datetime, timezone
+from instagrapi import Client
+from datetime import datetime, timedelta, timezone
 
-# --- CONFIG ---
 USERNAME = "truequotesandstuff"
 PASSWORD = "nobihuyaar@11"
-REPLY_MESSAGE = "oii massage maat kar warna nobi aake hate dene wallon ki kaa shod dega"
-REPLY_DELAY = 3  # seconds between replies per group
-# --------------------------------
+REPLY_MESSAGE = "massage maat kar warna lynx ki maa shod ke feekkk dunga"
 
 cl = Client()
-
-# Set spoofed device
 cl.set_device({
     "app_version": "272.0.0.18.84",
     "android_version": 34,
@@ -23,68 +18,68 @@ cl.set_device({
     "model": "Infinix X6739",
     "cpu": "mt6893"
 })
-
 cl.login(USERNAME, PASSWORD)
 
 last_reply_time = {}
+blacklisted_threads = {}
 
 def is_recent(msg):
-    if msg.timestamp:
-        now = datetime.now(timezone.utc)
-        return (now - msg.timestamp).total_seconds() <= 60
-    return False
+    if not msg.timestamp: return False
+    msg_time = msg.timestamp.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    return (now - msg_time) < timedelta(seconds=60)
 
-def is_name_change_event(msg):
-    return msg.type in ['action_log', 'xma', 'animated_media', 'reel_share'] or 'change' in str(msg).lower()
-
-def auto_reply_groups():
+def auto_reply_all_groups():
     while True:
         try:
             threads = cl.direct_threads()
             for thread in threads:
+                title = thread.thread_title or "Unnamed"
                 thread_id = thread.id
 
-                if not thread.is_group or not thread.thread_title:
+                if not thread.items or not thread.users or cl.user_id not in [u.pk for u in thread.users]:
+                    print(f"[SKIPPED] Removed from group '{title}'")
                     continue
 
-                # Skip if bot is no longer a participant
-                if cl.user_id not in [u.pk for u in thread.users]:
-                    print(f"[SKIPPED] Removed from group '{thread.thread_title}'")
+                if thread_id in blacklisted_threads:
                     continue
 
                 try:
                     thread_data = cl.direct_thread(thread_id)
-                    messages = thread_data.messages
-                    if not messages:
+                    if not thread_data or not thread_data.messages:
                         continue
+
+                    last_msg = thread_data.messages[0]
+
+                    if getattr(last_msg, "type", "") == "xma_thread_name":
+                        print(f"[SKIPPED] Name change event in '{title}'")
+                        blacklisted_threads[thread_id] = time.time()
+                        continue
+
+                    if last_msg.user_id == cl.user_id or getattr(last_msg, "from_me", False):
+                        print(f"[SKIPPED] Own message in '{title}'")
+                        continue
+
+                    if not is_recent(last_msg):
+                        continue
+
+                    if time.time() - last_reply_time.get(thread_id, 0) < 3:
+                        continue
+
+                    username = cl.user_info(last_msg.user_id).username
+                    roast = f"@{username} {REPLY_MESSAGE}"
+                    cl.direct_send(roast, thread_ids=[thread_id])
+                    print(f"[REPLIED] To @{username} in '{title}'")
+                    last_reply_time[thread_id] = time.time()
+
                 except Exception as e:
-                    print(f"Error fetching thread {thread_id}: {e}")
+                    print(f"[ERROR] Thread {title}: {e}")
                     continue
 
-                for msg in reversed(messages):
-                    if msg.user_id != cl.user_id and is_recent(msg):
-                        if is_name_change_event(msg):
-                            print(f"[SKIPPED] Group rename in '{thread.thread_title}'")
-                            break
+            time.sleep(3)
 
-                        try:
-                            username = cl.user_info(msg.user_id).username
-                            reply = f"@{username} {REPLY_MESSAGE}"
-
-                            now = time.time()
-                            if thread_id in last_reply_time and now - last_reply_time[thread_id] < REPLY_DELAY:
-                                break
-
-                            cl.direct_send(reply, thread_ids=[thread_id])
-                            last_reply_time[thread_id] = now
-                            print(f"[REPLIED] to @{username} in '{thread.thread_title}'")
-                        except Exception as e:
-                            print(f"Reply error: {e}")
-                        break
-            time.sleep(5)
         except Exception as e:
-            print(f"Main loop error: {e}")
+            print(f"[MAIN LOOP ERROR] {e}")
             time.sleep(10)
 
-if __name__ == "__main__":
-    auto_reply_groups()
+auto_reply_all_groups()
