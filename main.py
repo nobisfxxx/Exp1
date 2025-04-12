@@ -1,10 +1,13 @@
 from instagrapi import Client
-import os
-import json
 import time
+import json
+import os
 
 # --- CONFIG ---
-DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna nobi aa jaaeeega.. fir tere naam ki bot chala dega"
+USERNAME = os.getenv("IG_USERNAME")
+PASSWORD = os.getenv("IG_PASSWORD")
+
+DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
 TRIGGER_PHRASE = "hoi nobi is here"
 TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work weelll?.. If not make changes the the scrpit..till then boii boii boss"
 
@@ -20,37 +23,22 @@ CONFIRM_RESUME = "Bot resumed for this group. I’m back in action, boss!"
 
 STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
-SESSION_FILE = "session.json"
 # ------------------
 
-USERNAME = os.getenv("IG_USERNAME")
-PASSWORD = os.getenv("IG_PASSWORD")
+if not USERNAME or not PASSWORD:
+    raise Exception("Username or password not provided. Set IG_USERNAME and IG_PASSWORD as environment variables.")
 
 cl = Client()
+cl.login(USERNAME, PASSWORD)
 
-# --- Session-based login (load or login fresh)
-if os.path.exists(SESSION_FILE):
-    cl.load_settings(SESSION_FILE)
-    try:
-        cl.login(USERNAME, PASSWORD)
-        print(f"Logged in using saved session: {USERNAME}")
-    except Exception:
-        print("Session expired, logging in fresh...")
-        cl.set_settings({})
-        cl.login(USERNAME, PASSWORD)
-        cl.dump_settings(SESSION_FILE)
-else:
-    cl.login(USERNAME, PASSWORD)
-    cl.dump_settings(SESSION_FILE)
-    print(f"Logged in fresh and session saved: {USERNAME}")
-
-# --- Load persistent state
+# Load stopped threads
 if os.path.exists(STOP_FILE):
     with open(STOP_FILE, "r") as f:
         stopped_threads = set(json.load(f))
 else:
     stopped_threads = set()
 
+# Load last replied messages
 if os.path.exists(REPLY_TRACK_FILE):
     with open(REPLY_TRACK_FILE, "r") as f:
         last_replied = json.load(f)
@@ -67,7 +55,6 @@ def save_last_replied():
     with open(REPLY_TRACK_FILE, "w") as f:
         json.dump(last_replied, f)
 
-# --- Main loop
 def auto_reply_all_groups():
     while True:
         try:
@@ -75,6 +62,7 @@ def auto_reply_all_groups():
             for thread in threads:
                 if thread.inviter is None or len(thread.users) <= 2:
                     continue
+
                 thread_id = thread.id
                 try:
                     thread_data = cl.direct_thread(thread_id)
@@ -147,11 +135,10 @@ def auto_reply_all_groups():
                         save_last_replied()
                     except Exception as e:
                         print(f"Error replying in thread {thread_id}: {e}")
-                    break
-            time.sleep(3)
+                    break  # one reply per loop
+            time.sleep(2)
         except Exception as e:
             print(f"Main loop error: {e}")
-            time.sleep(5)
+            time.sleep(2)
 
-# --- Run bot
 auto_reply_all_groups()
