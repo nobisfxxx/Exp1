@@ -1,36 +1,40 @@
-import os
 from instagrapi import Client
 import time
 import json
+import os
 
 # --- CONFIG ---
+USERNAME = "truequotesandstuff"  # Replace with your Instagram username
+PASSWORD = "nobihuyaar@11"  # Replace with your Instagram password
+
 DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
 TRIGGER_PHRASE = "hoi nobi is here"
-TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work weelll?.. If not make changes the the script.. till then boii boii boss"
+TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work weelll?.. If not make changes to the script.. till then boii boii boss"
+
 STOP_COMMAND = "stop the bot on this gc"
 RESUME_COMMAND = "resume the bot on this gc"
+
 PASSWORD_REQUEST = "Okay, boss. What's the password?"
 VALID_PASSWORD = "17092004"
+
 CONFIRM_STOP = "Bot stopped for this group. Catch ya later, boss!"
 WRONG_PASSWORD = "Wrong password, boss. Try again or stay roasted."
 CONFIRM_RESUME = "Bot resumed for this group. I’m back in action, boss!"
+
 STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
 # ------------------
 
-# Fetch credentials from environment variables
-USERNAME = os.getenv("IG_USERNAME")
-PASSWORD = os.getenv("IG_PASSWORD")
-
-if not USERNAME or not PASSWORD:
-    print("Environment variables not set properly!")
-    raise Exception("Username or password not provided. Set IG_USERNAME and IG_PASSWORD as environment variables.")
-else:
-    print(f"Username: {USERNAME}")
-    print(f"Password: {PASSWORD}")
-
+# Initialize the client
 cl = Client()
-cl.login(USERNAME, PASSWORD)
+
+# Log in using hardcoded credentials
+try:
+    cl.login(USERNAME, PASSWORD)
+    print(f"Logged in successfully as {USERNAME}")
+except Exception as e:
+    print(f"Error during login: {e}")
+    exit()
 
 # Load stopped threads
 if os.path.exists(STOP_FILE):
@@ -105,10 +109,9 @@ def auto_reply_all_groups():
                                     awaiting_password.pop(thread_id)
                             else:
                                 cl.direct_send(WRONG_PASSWORD, thread_ids=[thread_id])
-
-                        last_replied[thread_id] = message_id
-                        save_last_replied()
-                        break
+                            last_replied[thread_id] = message_id
+                            save_last_replied()
+                            break
 
                         if STOP_COMMAND in text:
                             cl.direct_send(PASSWORD_REQUEST, thread_ids=[thread_id])
@@ -141,7 +144,7 @@ def auto_reply_all_groups():
                         save_last_replied()
                     except Exception as e:
                         print(f"Error replying in thread {thread_id}: {e}")
-                        break  # one reply per loop
+                    break  # one reply per loop
             time.sleep(2)  # Faster loop
         except Exception as e:
             print(f"Main loop error: {e}")
