@@ -5,8 +5,8 @@ import json
 import os
 
 # --- CONFIG ---
-USERNAME = "bot_check_hu"  # Your username
-PASSWORD = "nobilovestinglui"  # Your password
+USERNAME = "rdpofraaz"  # Your username
+PASSWORD = "rudrakirdp"  # Your password
 REPLY_MESSAGE = "oii massage maat kar warna paradox ki maa shod ke feekkk dunga"
 SESSION_FILE = "session_cookies.json"  # Your session file
 BLACKLIST_FILE = "blacklist.json"
