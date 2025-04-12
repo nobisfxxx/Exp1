@@ -1,28 +1,24 @@
 import os
-from instagrapi import Client
 from dotenv import load_dotenv
+from instagrapi import Client
 
-# Load environment variables from the system
+# Load environment variables from .env file
 load_dotenv()
 
-# Retrieve the Instagram username and password from environment variables
-USERNAME = os.getenv("bot_check_hu")  # Replace 'bot_check_hu' with the environment variable name
-PASSWORD = os.getenv("nobilovestinglui")  # Replace 'nobilovestinglui' with the environment variable name
+# Get Instagram username and password from environment variables
+USERNAME = os.getenv('bot_check_hu')
+PASSWORD = os.getenv('nobilovestinglui')
 
-# Debugging output to check if the values are being fetched correctly
-print(f"DEBUG USERNAME: {USERNAME}")
-print(f"DEBUG PASSWORD: {PASSWORD}")
-
-# Check if username and password are provided, else raise an error
+# Check if username and password are provided
 if not USERNAME or not PASSWORD:
     raise ValueError("Instagram USERNAME or PASSWORD not provided in environment variables.")
 
 # Initialize the Instagram client
 cl = Client()
 
-# Login to Instagram using the provided credentials
+# Log in to Instagram
 cl.login(USERNAME, PASSWORD)
 
-print("Logged in successfully!")
+# Your bot logic here (add more features as needed)
 
-# Add your other functionality (like interacting with Instagram, sending messages, etc.) here.
+print("Successfully logged in to Instagram.")
