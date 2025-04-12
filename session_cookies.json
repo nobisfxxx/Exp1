@@ -1,12 +1,14 @@
 {
-  "sessionid": "252656776%3AADohrOOaMWNErK%3A18%3AAYfLF1taHeGZ7HBlxQWMK94kscBcevDQIm-uj2wEyA",
-  "csrftoken": "eToVKWEeTtOAEhaWYT3RcgxzjASJeX55",
-  "ds_user_id": "252656776",
-  "ig_nrcb": "1",
-  "ig_did": "280A2974-F547-4DD2-9E9F-E2430088E8D3",
-  "mid": "Z_iOtgABAAHLGi0lm9a_XO3vsNsu",
-  "ps_n": "1",
-  "ps_l": "1",
-  "wd": "432x850",
-  "rur": "\"VLL\\054252656776\\0541775974468:01f748eb0e37467b9494138c33bb79782c3e12e607afac69faddc6fdae08d930c58fd364\""
+    "ps_n": "1",
+    "datr": "to74Z3KuuvGy6ftHlxv4VU66",
+    "ig_nrcb": "1",
+    "ds_user_id": "252656776",
+    "csrftoken": "eToVKWEeTtOAEhaWYT3RcgxzjASJeX55",
+    "ig_did": "280A2974-F547-4DD2-9E9F-E2430088E8D3",
+    "ps_l": "1",
+    "wd": "432x850",
+    "mid": "Z_iOtgABAAHLGi0lm9a_XO3vsNsu",
+    "sessionid": "252656776%3AADohrOOaMWNErK%3A18%3AAYfLF1taHeGZ7HBlxQWMK94kscBcevDQIm-uj2wEyA",
+    "dpr": "2.5",
+    "rur": "\"VLL\\054252656776\\0541775979825:01f7f89ea0e7a585560e3e0a813aa07935c8eab5068388bcce47e95a5ae5d4ab886682ef\""
 }
