@@ -1,96 +1,157 @@
-import random
 from instagrapi import Client
+import os
 import json
 import time
-import os
 
 # --- CONFIG ---
-USERNAME = "bot_check_hu"
-PASSWORD = "nobilovestinglui"
-SESSION_FILE = "session_cookies.json"
-REPLY_MESSAGE = "oii massage maat kar warna paradox ki maa shod ke feekkk dunga"
-REPLY_INTERVAL = 3  # seconds
-PROXIES = [
-    '154.213.198.27:3128',
-    '156.253.171.165:3128',
-    # Add more proxies here
-]
-# ----------------
+DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna nobi aa jaaeeega.. fir tere naam ki bot chala dega"
+TRIGGER_PHRASE = "hoi nobi is here"
+TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work weelll?.. If not make changes the the scrpit..till then boii boii boss"
 
-device_settings = {
-    "app_version": "272.0.0.18.84",
-    "android_version": 34,
-    "android_release": "14",
-    "dpi": "480dpi",
-    "resolution": "1080x2400",
-    "manufacturer": "infinix",
-    "device": "Infinix-X6739",
-    "model": "Infinix X6739",
-    "cpu": "mt6893"
-}
+STOP_COMMAND = "stop the bot on this gc"
+RESUME_COMMAND = "resume the bot on this gc"
+
+PASSWORD_REQUEST = "Okay, boss. What's the password?"
+VALID_PASSWORD = "17092004"
+
+CONFIRM_STOP = "Bot stopped for this group. Catch ya later, boss!"
+WRONG_PASSWORD = "Wrong password, boss. Try again or stay roasted."
+CONFIRM_RESUME = "Bot resumed for this group. I’m back in action, boss!"
+
+STOP_FILE = "stopped_threads.json"
+REPLY_TRACK_FILE = "replied_messages.json"
+SESSION_FILE = "session.json"
+# ------------------
+
+USERNAME = os.getenv("IG_USERNAME")
+PASSWORD = os.getenv("IG_PASSWORD")
 
 cl = Client()
 
-# Set a proxy
-def set_proxy():
-    proxy = random.choice(PROXIES)  # Randomly choose a proxy from the list
-    print(f"Using proxy: {proxy}")
-    cl.set_proxy(f'http://{proxy}')
-
-cl.set_device(device_settings)
-
-# Load session
-def load_session():
-    if os.path.exists(SESSION_FILE):
-        try:
-            cl.load_settings(SESSION_FILE)
-            # Test the session with a simple request
-            cl.get_timeline_feed()
-            print("Logged in using saved session.")
-        except Exception as e:
-            print(f"Session load failed: {e}")
-            # Session failed to load, need to re-login
-            re_login()
-    else:
-        # No session file, login directly
-        re_login()
-
-# Login method
-def re_login():
+# --- Session-based login (load or login fresh)
+if os.path.exists(SESSION_FILE):
+    cl.load_settings(SESSION_FILE)
     try:
         cl.login(USERNAME, PASSWORD)
+        print(f"Logged in using saved session: {USERNAME}")
+    except Exception:
+        print("Session expired, logging in fresh...")
+        cl.set_settings({})
+        cl.login(USERNAME, PASSWORD)
         cl.dump_settings(SESSION_FILE)
-        print("Logged in successfully and session saved.")
-    except Exception as e:
-        print(f"Login failed: {e}")
+else:
+    cl.login(USERNAME, PASSWORD)
+    cl.dump_settings(SESSION_FILE)
+    print(f"Logged in fresh and session saved: {USERNAME}")
 
-# Proxy and session management
+# --- Load persistent state
+if os.path.exists(STOP_FILE):
+    with open(STOP_FILE, "r") as f:
+        stopped_threads = set(json.load(f))
+else:
+    stopped_threads = set()
+
+if os.path.exists(REPLY_TRACK_FILE):
+    with open(REPLY_TRACK_FILE, "r") as f:
+        last_replied = json.load(f)
+else:
+    last_replied = {}
+
+awaiting_password = {}
+
+def save_stopped_threads():
+    with open(STOP_FILE, "w") as f:
+        json.dump(list(stopped_threads), f)
+
+def save_last_replied():
+    with open(REPLY_TRACK_FILE, "w") as f:
+        json.dump(last_replied, f)
+
+# --- Main loop
 def auto_reply_all_groups():
-    global last_reply_time
-    last_reply_time = 0  # Initialize last_reply_time
     while True:
         try:
-            set_proxy()  # Set proxy at the start of the loop
             threads = cl.direct_threads()
             for thread in threads:
                 if thread.inviter is None or len(thread.users) <= 2:
                     continue
-
-                # Skip blacklisted threads or already replied threads
                 thread_id = thread.id
                 try:
-                    thread_data = cl.direct_messages(thread_id)
-                    last_message = thread_data[0]
-                except Exception:
+                    thread_data = cl.direct_thread(thread_id)
+                    if thread_data is None:
+                        continue
+                    messages = thread_data.messages
+                except Exception as e:
+                    print(f"Error fetching thread {thread_id}: {e}")
                     continue
 
-                if time.time() - last_reply_time >= REPLY_INTERVAL and 'group name changed' not in last_message.text.lower():
-                    cl.direct_send(REPLY_MESSAGE, thread_id)
-                    last_reply_time = time.time()
+                for msg in reversed(messages):
+                    if msg.user_id == cl.user_id:
+                        continue
+
+                    message_id = str(msg.id)
+                    text = msg.text.lower()
+                    username = cl.user_info(msg.user_id).username
+
+                    if last_replied.get(thread_id) == message_id:
+                        break
+
+                    try:
+                        if thread_id in awaiting_password:
+                            mode = awaiting_password[thread_id]
+                            if VALID_PASSWORD in text:
+                                if mode == "stop":
+                                    cl.direct_send(CONFIRM_STOP, thread_ids=[thread_id])
+                                    stopped_threads.add(thread_id)
+                                    save_stopped_threads()
+                                    print(f"Bot stopped in {thread_id}")
+                                elif mode == "resume":
+                                    if thread_id in stopped_threads:
+                                        stopped_threads.remove(thread_id)
+                                        cl.direct_send(CONFIRM_RESUME, thread_ids=[thread_id])
+                                        save_stopped_threads()
+                                        print(f"Bot resumed in {thread_id}")
+                                awaiting_password.pop(thread_id)
+                            else:
+                                cl.direct_send(WRONG_PASSWORD, thread_ids=[thread_id])
+                            last_replied[thread_id] = message_id
+                            save_last_replied()
+                            break
+
+                        if STOP_COMMAND in text:
+                            cl.direct_send(PASSWORD_REQUEST, thread_ids=[thread_id])
+                            awaiting_password[thread_id] = "stop"
+                            last_replied[thread_id] = message_id
+                            save_last_replied()
+                            break
+
+                        if RESUME_COMMAND in text:
+                            cl.direct_send(PASSWORD_REQUEST, thread_ids=[thread_id])
+                            awaiting_password[thread_id] = "resume"
+                            last_replied[thread_id] = message_id
+                            save_last_replied()
+                            break
+
+                        if thread_id in stopped_threads:
+                            break
+
+                        if TRIGGER_PHRASE in text:
+                            cl.direct_send(TRIGGER_RESPONSE, thread_ids=[thread_id])
+                            print(f"Triggered response to @{username}")
+                        else:
+                            reply = f"@{username} {DEFAULT_REPLY_MESSAGE}"
+                            cl.direct_send(reply, thread_ids=[thread_id])
+                            print(f"Roasted @{username}")
+
+                        last_replied[thread_id] = message_id
+                        save_last_replied()
+                    except Exception as e:
+                        print(f"Error replying in thread {thread_id}: {e}")
+                    break
+            time.sleep(3)
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Main loop error: {e}")
             time.sleep(5)
 
-# Initialize session and run the bot
-load_session()
+# --- Run bot
 auto_reply_all_groups()
