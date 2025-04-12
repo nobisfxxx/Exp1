@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timezone, timedelta
 from instagrapi import Client
 
-REPLY_MESSAGE = "oii massage maat kar warna tere maa shod ke feekkk dunga"
+REPLY_MESSAGE = "oii massage maat kar warna haters ki maa shod ke feekkk dunga"
 
 DEVICE = {
     "app_version": "272.0.0.18.84",
