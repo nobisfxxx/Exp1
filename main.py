@@ -4,8 +4,8 @@ import json
 import os
 
 # --- CONFIG ---
-USERNAME = "bot_check_hu"  # Replace with your Instagram username
-PASSWORD = "nobihuyaar@11"  # Replace with your Instagram password
+USERNAME = "rdp_god_hu"  # Replace with your Instagram username
+PASSWORD = "nobihuyaarr@11"  # Replace with your Instagram password
 
 DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
 TRIGGER_PHRASE = "hoi nobi is here"
