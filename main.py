@@ -8,7 +8,7 @@ import os
 USERNAME = "bot_check_hu"
 PASSWORD = "nobilovestinglui"
 SESSION_FILE = "session_cookies.json"
-REPLY_MESSAGE = "oii massage maat kar warna paradox ki maa shod ke feekkk dunga"
+REPLY_MESSAGE = "oii massage maat kar warna nobi ke haters ki maa shod ke feekkk dunga"
 REPLY_INTERVAL = 3  # seconds
 PROXIES = [
     '154.213.198.27:3128',
@@ -67,6 +67,7 @@ def login():
 # Proxy and session management
 def auto_reply_all_groups():
     global last_reply_time
+    last_reply_time = 0  # Initialize last_reply_time
     while True:
         try:
             set_proxy()  # Set proxy at the start of the loop
