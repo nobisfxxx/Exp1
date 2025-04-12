@@ -25,8 +25,10 @@ STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
 # ------------------
 
-# Initialize the client
+# Initialize the client and set proxy
 cl = Client()
+proxy = "http://3.10.93.50:80"  # Replace with your proxy
+cl.set_proxy(proxy)
 
 # Log in using hardcoded credentials
 try:
