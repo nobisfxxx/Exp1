@@ -2,10 +2,6 @@ import os
 import time
 from datetime import datetime, timezone, timedelta
 from instagrapi import Client
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
 
 REPLY_MESSAGE = "oii massage maat kar warna tere maa shod ke feekkk dunga"
 
@@ -24,15 +20,11 @@ DEVICE = {
 cl = Client()
 cl.set_device(DEVICE)
 
-# Get username and password from environment variables
-USERNAME = os.getenv("bot_check_hu")
-PASSWORD = os.getenv("nobilovestinglui")
+# Fetching Instagram credentials from environment variables
+USERNAME = os.environ.get("bot_check_hu")
+PASSWORD = os.environ.get("nobilovestinglui")
 
-# Debug check
-print(f"Username: {USERNAME}")
-print(f"Password: {'SET' if PASSWORD else 'NOT SET'}")
-
-# Login to Instagram
+# Login to Instagram using credentials from environment variables
 cl.login(USERNAME, PASSWORD)
 
 last_reply_time = {}
