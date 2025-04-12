@@ -1,44 +1,42 @@
+import os
 from instagrapi import Client
 import time
 import json
-import os
 
-# --- CONFIG ---
+# --- Load credentials from environment variables ---
 USERNAME = os.getenv("IG_USERNAME")
 PASSWORD = os.getenv("IG_PASSWORD")
 
+if not USERNAME or not PASSWORD:
+    raise Exception("Username or password not provided. Set IG_USERNAME and IG_PASSWORD as environment variables.")
+
+# --- Constants ---
 DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
 TRIGGER_PHRASE = "hoi nobi is here"
 TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work weelll?.. If not make changes the the scrpit..till then boii boii boss"
 
 STOP_COMMAND = "stop the bot on this gc"
 RESUME_COMMAND = "resume the bot on this gc"
-
 PASSWORD_REQUEST = "Okay, boss. What's the password?"
 VALID_PASSWORD = "17092004"
-
 CONFIRM_STOP = "Bot stopped for this group. Catch ya later, boss!"
 WRONG_PASSWORD = "Wrong password, boss. Try again or stay roasted."
 CONFIRM_RESUME = "Bot resumed for this group. I’m back in action, boss!"
 
 STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
-# ------------------
 
-if not USERNAME or not PASSWORD:
-    raise Exception("Username or password not provided. Set IG_USERNAME and IG_PASSWORD as environment variables.")
-
+# --- Setup client ---
 cl = Client()
 cl.login(USERNAME, PASSWORD)
 
-# Load stopped threads
+# --- State Storage ---
 if os.path.exists(STOP_FILE):
     with open(STOP_FILE, "r") as f:
         stopped_threads = set(json.load(f))
 else:
     stopped_threads = set()
 
-# Load last replied messages
 if os.path.exists(REPLY_TRACK_FILE):
     with open(REPLY_TRACK_FILE, "r") as f:
         last_replied = json.load(f)
@@ -92,13 +90,10 @@ def auto_reply_all_groups():
                                     cl.direct_send(CONFIRM_STOP, thread_ids=[thread_id])
                                     stopped_threads.add(thread_id)
                                     save_stopped_threads()
-                                    print(f"Bot stopped in {thread_id}")
-                                elif mode == "resume":
-                                    if thread_id in stopped_threads:
-                                        stopped_threads.remove(thread_id)
-                                        cl.direct_send(CONFIRM_RESUME, thread_ids=[thread_id])
-                                        save_stopped_threads()
-                                        print(f"Bot resumed in {thread_id}")
+                                elif mode == "resume" and thread_id in stopped_threads:
+                                    stopped_threads.remove(thread_id)
+                                    cl.direct_send(CONFIRM_RESUME, thread_ids=[thread_id])
+                                    save_stopped_threads()
                                 awaiting_password.pop(thread_id)
                             else:
                                 cl.direct_send(WRONG_PASSWORD, thread_ids=[thread_id])
@@ -125,17 +120,13 @@ def auto_reply_all_groups():
 
                         if TRIGGER_PHRASE in text:
                             cl.direct_send(TRIGGER_RESPONSE, thread_ids=[thread_id])
-                            print(f"Triggered response to @{username}")
                         else:
-                            reply = f"@{username} {DEFAULT_REPLY_MESSAGE}"
-                            cl.direct_send(reply, thread_ids=[thread_id])
-                            print(f"Roasted @{username}")
-
+                            cl.direct_send(f"@{username} {DEFAULT_REPLY_MESSAGE}", thread_ids=[thread_id])
                         last_replied[thread_id] = message_id
                         save_last_replied()
                     except Exception as e:
                         print(f"Error replying in thread {thread_id}: {e}")
-                    break  # one reply per loop
+                    break
             time.sleep(2)
         except Exception as e:
             print(f"Main loop error: {e}")
