@@ -8,7 +8,7 @@ import os
 USERNAME = "bot_check_hu"
 PASSWORD = "nobilovestinglui"
 SESSION_FILE = "session_cookies.json"
-REPLY_MESSAGE = "oii massage maat kar warna nobi ke haters ki maa shod ke feekkk dunga"
+REPLY_MESSAGE = "oii massage maat kar warna paradox ki maa shod ke feekkk dunga"
 REPLY_INTERVAL = 3  # seconds
 PROXIES = [
     '154.213.198.27:3128',
@@ -50,13 +50,13 @@ def load_session():
         except Exception as e:
             print(f"Session load failed: {e}")
             # Session failed to load, need to re-login
-            login()
+            re_login()
     else:
         # No session file, login directly
-        login()
+        re_login()
 
 # Login method
-def login():
+def re_login():
     try:
         cl.login(USERNAME, PASSWORD)
         cl.dump_settings(SESSION_FILE)
