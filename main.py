@@ -4,8 +4,8 @@ import json
 import os
 
 # --- CONFIG ---
-USERNAME = "rdp_god_hu"  # Replace with your Instagram username
-PASSWORD = "nobihuyaarr@11"  # Replace with your Instagram password
+USERNAME = "truequotesandstuff"
+PASSWORD = "nobihuyaar@11"
 
 DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
 TRIGGER_PHRASE = "hoi nobi is here"
@@ -25,12 +25,12 @@ STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
 # ------------------
 
-# Initialize the client and set proxy
+# Initialize the client
 cl = Client()
-proxy = "http://3.10.93.50:80"  # Replace with your proxy
-cl.set_proxy(proxy)
 
-# Log in using hardcoded credentials
+# No proxy is set here — uses the device’s IP directly
+
+# Login
 try:
     cl.login(USERNAME, PASSWORD)
     print(f"Logged in successfully as {USERNAME}")
@@ -45,7 +45,7 @@ if os.path.exists(STOP_FILE):
 else:
     stopped_threads = set()
 
-# Load last replied messages
+# Load replied messages
 if os.path.exists(REPLY_TRACK_FILE):
     with open(REPLY_TRACK_FILE, "r") as f:
         last_replied = json.load(f)
@@ -80,7 +80,7 @@ def auto_reply_all_groups():
                     print(f"Error fetching thread {thread_id}: {e}")
                     continue
 
-                for msg in reversed(messages):  # newest first
+                for msg in reversed(messages):
                     if msg.user_id == cl.user_id:
                         continue
 
@@ -88,12 +88,10 @@ def auto_reply_all_groups():
                     text = msg.text.lower()
                     username = cl.user_info(msg.user_id).username
 
-                    # Skip if already replied to this message
                     if last_replied.get(thread_id) == message_id:
                         break
 
                     try:
-                        # Password confirmation
                         if thread_id in awaiting_password:
                             mode = awaiting_password[thread_id]
                             if VALID_PASSWORD in text:
@@ -108,7 +106,7 @@ def auto_reply_all_groups():
                                         cl.direct_send(CONFIRM_RESUME, thread_ids=[thread_id])
                                         save_stopped_threads()
                                         print(f"Bot resumed in {thread_id}")
-                                    awaiting_password.pop(thread_id)
+                                awaiting_password.pop(thread_id)
                             else:
                                 cl.direct_send(WRONG_PASSWORD, thread_ids=[thread_id])
                             last_replied[thread_id] = message_id
@@ -129,11 +127,9 @@ def auto_reply_all_groups():
                             save_last_replied()
                             break
 
-                        # If group is stopped, skip it
                         if thread_id in stopped_threads:
                             break
 
-                        # Trigger phrase
                         if TRIGGER_PHRASE in text:
                             cl.direct_send(TRIGGER_RESPONSE, thread_ids=[thread_id])
                             print(f"Triggered response to @{username}")
@@ -146,8 +142,8 @@ def auto_reply_all_groups():
                         save_last_replied()
                     except Exception as e:
                         print(f"Error replying in thread {thread_id}: {e}")
-                    break  # one reply per loop
-            time.sleep(2)  # Faster loop
+                    break  # only one reply per thread per cycle
+            time.sleep(2)
         except Exception as e:
             print(f"Main loop error: {e}")
             time.sleep(2)
