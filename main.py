@@ -62,6 +62,7 @@ def rotate_proxies():
 
 def login_with_proxy(proxy):
     try:
+        print(f"Attempting login with proxy: {proxy}")
         cl.set_proxy(proxy)
         cl.login(USERNAME, PASSWORD)
         print(f"Logged in successfully using proxy {proxy}")
@@ -76,6 +77,7 @@ def auto_reply_all_groups():
         try:
             # Try login using proxies, rotate on failure
             if not login_with_proxy(next(proxy_cycle)):
+                print("Login failed, retrying with another proxy...")
                 time.sleep(5)
                 continue
 
