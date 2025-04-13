@@ -2,6 +2,7 @@ from instagrapi import Client
 import time
 import json
 import os
+import random
 
 # --- CONFIG ---
 USERNAME = "rumeyaaakdemir5055"
@@ -25,10 +26,22 @@ STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
 # ------------------
 
+# List of proxies to choose from
+PROXIES = [
+    "http://103.102.128.112:6636",
+    "http://12.131.14.114:3128",
+    "http://103.67.91.50:8081"
+]
+
+# Function to get a random proxy
+def get_random_proxy():
+    return random.choice(PROXIES)
+
 # Initialize the client
 cl = Client()
 
-# No proxy is set here — uses the device’s IP directly
+# Set the proxy for the client
+cl.set_proxy(get_random_proxy())
 
 # Login
 try:
@@ -106,7 +119,7 @@ def auto_reply_all_groups():
                                         cl.direct_send(CONFIRM_RESUME, thread_ids=[thread_id])
                                         save_stopped_threads()
                                         print(f"Bot resumed in {thread_id}")
-                                awaiting_password.pop(thread_id)
+                                    awaiting_password.pop(thread_id)
                             else:
                                 cl.direct_send(WRONG_PASSWORD, thread_ids=[thread_id])
                             last_replied[thread_id] = message_id
@@ -143,9 +156,9 @@ def auto_reply_all_groups():
                     except Exception as e:
                         print(f"Error replying in thread {thread_id}: {e}")
                     break  # only one reply per thread per cycle
-            time.sleep(2)
+            time.sleep(1)  # Reduced the time between requests to 1 second
         except Exception as e:
             print(f"Main loop error: {e}")
-            time.sleep(2)
+            time.sleep(1)  # Reduced the time between retries to 1 second
 
 auto_reply_all_groups()
