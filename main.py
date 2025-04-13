@@ -27,7 +27,6 @@ STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
 
 PROXIES = [
-    "http://12.131.14.114:3128",
     "http://103.67.91.50:8081"
 ]
 
