@@ -26,29 +26,32 @@ STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
 # ------------------
 
-# List of proxies to choose from
+# List of proxies to use for login rotation
 PROXIES = [
     "http://103.102.128.112:6636",
     "http://12.131.14.114:3128",
     "http://103.67.91.50:8081"
 ]
 
-# Function to get a random proxy
-def get_random_proxy():
-    return random.choice(PROXIES)
-
 # Initialize the client
 cl = Client()
 
-# Set the proxy for the client
-cl.set_proxy(get_random_proxy())
+# Function to login with proxy rotation
+def login_with_proxy():
+    for proxy in PROXIES:
+        try:
+            cl.set_proxy(proxy)
+            cl.login(USERNAME, PASSWORD)
+            print(f"Logged in successfully as {USERNAME} using proxy {proxy}")
+            return True
+        except Exception as e:
+            print(f"Error during login with proxy {proxy}: {e}")
+            continue
+    print("All proxy login attempts failed.")
+    return False
 
-# Login
-try:
-    cl.login(USERNAME, PASSWORD)
-    print(f"Logged in successfully as {USERNAME}")
-except Exception as e:
-    print(f"Error during login: {e}")
+# Login using the proxy rotation
+if not login_with_proxy():
     exit()
 
 # Load stopped threads
@@ -156,9 +159,9 @@ def auto_reply_all_groups():
                     except Exception as e:
                         print(f"Error replying in thread {thread_id}: {e}")
                     break  # only one reply per thread per cycle
-            time.sleep(1)  # Reduced the time between requests to 1 second
+            time.sleep(1)  # Reduced sleep time to avoid flags
         except Exception as e:
             print(f"Main loop error: {e}")
-            time.sleep(1)  # Reduced the time between retries to 1 second
+            time.sleep(1)
 
 auto_reply_all_groups()
