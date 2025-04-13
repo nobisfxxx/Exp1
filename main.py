@@ -1,8 +1,9 @@
-from instagrapi import Client
+import random
 import time
 import json
 import os
-import random
+from instagrapi import Client
+from itertools import cycle
 
 # --- CONFIG ---
 USERNAME = "rumeyaaakdemir5055"
@@ -24,35 +25,14 @@ CONFIRM_RESUME = "Bot resumed for this group. I’m back in action, boss!"
 
 STOP_FILE = "stopped_threads.json"
 REPLY_TRACK_FILE = "replied_messages.json"
-# ------------------
 
-# List of proxies to use for login rotation
 PROXIES = [
-    "http://103.102.128.112:6636",
     "http://12.131.14.114:3128",
     "http://103.67.91.50:8081"
 ]
 
 # Initialize the client
 cl = Client()
-
-# Function to login with proxy rotation
-def login_with_proxy():
-    for proxy in PROXIES:
-        try:
-            cl.set_proxy(proxy)
-            cl.login(USERNAME, PASSWORD)
-            print(f"Logged in successfully as {USERNAME} using proxy {proxy}")
-            return True
-        except Exception as e:
-            print(f"Error during login with proxy {proxy}: {e}")
-            continue
-    print("All proxy login attempts failed.")
-    return False
-
-# Login using the proxy rotation
-if not login_with_proxy():
-    exit()
 
 # Load stopped threads
 if os.path.exists(STOP_FILE):
@@ -78,9 +58,28 @@ def save_last_replied():
     with open(REPLY_TRACK_FILE, "w") as f:
         json.dump(last_replied, f)
 
+def rotate_proxies():
+    return cycle(PROXIES)
+
+def login_with_proxy(proxy):
+    try:
+        cl.set_proxy(proxy)
+        cl.login(USERNAME, PASSWORD)
+        print(f"Logged in successfully using proxy {proxy}")
+    except Exception as e:
+        print(f"Error during login with proxy {proxy}: {e}")
+        return False
+    return True
+
 def auto_reply_all_groups():
+    proxy_cycle = rotate_proxies()
     while True:
         try:
+            # Try login using proxies, rotate on failure
+            if not login_with_proxy(next(proxy_cycle)):
+                time.sleep(5)
+                continue
+
             threads = cl.direct_threads()
             for thread in threads:
                 if thread.inviter is None or len(thread.users) <= 2:
@@ -159,9 +158,9 @@ def auto_reply_all_groups():
                     except Exception as e:
                         print(f"Error replying in thread {thread_id}: {e}")
                     break  # only one reply per thread per cycle
-            time.sleep(1)  # Reduced sleep time to avoid flags
+            time.sleep(2)
         except Exception as e:
             print(f"Main loop error: {e}")
-            time.sleep(1)
+            time.sleep(2)
 
 auto_reply_all_groups()
