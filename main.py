@@ -4,8 +4,8 @@ import json
 import os
 
 # --- CONFIG ---
-USERNAME = "truequotesandstuff"
-PASSWORD = "nobihuyaar@11"
+USERNAME = "bot_check_hu"
+PASSWORD = "nobilovestinglui"
 
 DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
 TRIGGER_PHRASE = "hoi nobi is here"
