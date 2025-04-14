@@ -1,13 +1,12 @@
-import random
-
-roasts = [
-    "You're like a cloud. When you disappear, it's a beautiful day.",
-    "If I had a dollar for every time you said something smart, I'd be poor.",
-    "Are you always this dumb, or is today a special day for you?",
-    "Your secrets are always safe with me. I never even listen when you tell me them.",
-    "You bring everyone so much joy when you leave the room.",
-    # Add more roasts here...
+ROASTS = [
+    "tera sense of humor toh chullu bhar paani mein doob ke mar gaya hai",
+    "tu joke kare ya rona dhona, dono ek jaise lagte hain",
+    "tera dimaag ek expired botal Coke se zyada fizz deta hai",
+    "tu toh itna slow hai, Google bhi sochta hai 'Let it be'",
+    "tu toh woh typo hai jo autocorrect bhi ignore kar deta hai",
+    "teri logic ka GPS hamesha lost hota hai",
+    "jab tu bola karta hai, headphones khud mute ho jaate hain",
+    "tu reality show ka background extra lagta hai",
+    "tera IQ room temperature se bhi kam hai",
+    "tu toh WhatsApp ke 'forwarded many times' wala joke hai",
 ]
-
-def get_random_roast(username):
-    return f"{username}, {random.choice(roasts)}"
