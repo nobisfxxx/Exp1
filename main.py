@@ -3,11 +3,10 @@ import random
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from instagrapi.types import DirectMessage
-import os
 
-# Fetch sensitive data from environment variables
-USERNAME = os.getenv("INSTAGRAM_USERNAME")
-PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
+# Make sure your username and password are correctly defined
+USERNAME = "bot_check_hu"
+PASSWORD = "nobilovestinglui"
 
 ROAST_MESSAGES = [
     "bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
@@ -26,6 +25,7 @@ def login():
     cl = Client()
     cl.delay_range = [1, 3]
     try:
+        # Ensure you are passing both username and password
         cl.login(USERNAME, PASSWORD)
         print("[LOGIN SUCCESS]")
     except Exception as e:
