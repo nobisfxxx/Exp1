@@ -1,4 +1,3 @@
-instagrapi
-cython
+instagrapi==2.1.3
 requests
-flask  # Optional, if you plan to expose the bot via a web interface
+cython
