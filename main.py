@@ -4,7 +4,6 @@ from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from instagrapi.types import DirectMessage
 
-# Make sure your username and password are correctly defined
 USERNAME = "bot_check_hu"
 PASSWORD = "nobilovestinglui"
 
@@ -25,9 +24,9 @@ def login():
     cl = Client()
     cl.delay_range = [1, 3]
     try:
-        # Ensure you are passing both username and password
         cl.login(USERNAME, PASSWORD)
-        print("[LOGIN SUCCESS]")
+        cl.get_timeline_feed()  # helps set user_id
+        print(f"[LOGIN SUCCESS] Logged in as {USERNAME}")
     except Exception as e:
         print(f"[LOGIN FAILED] {e}")
         exit()
@@ -35,8 +34,7 @@ def login():
 
 def get_recent_messages(cl):
     try:
-        threads = cl.direct_threads()
-        return threads
+        return cl.direct_threads()
     except LoginRequired:
         print("[DEBUG] Session expired. Re-logging...")
         cl.login(USERNAME, PASSWORD)
@@ -46,18 +44,22 @@ def get_recent_messages(cl):
         return []
 
 def reply_to_group_messages(cl):
-    print("[BOT ACTIVE] FORCED reply mode testing (no reply_to)...")
+    print("[BOT ACTIVE] Forced reply mode (no reply_to)...")
+    my_user_id = cl.user_id  # fetch after login to avoid replying to self
+
     while True:
         threads = get_recent_messages(cl)
         for thread in threads:
             if not thread.is_group:
                 continue
 
-            last_msg: DirectMessage = thread.messages[0]
-            if last_msg.user_id == cl.user_id:
-                continue  # skip if the bot sent it
-
             try:
+                updated_thread = cl.direct_thread(thread.id)  # ensure fresh messages
+                last_msg: DirectMessage = updated_thread.messages[0]
+
+                if last_msg.user_id == my_user_id:
+                    continue  # skip own messages
+
                 user_info = cl.user_info(last_msg.user_id)
                 roast = random.choice(ROAST_MESSAGES)
                 reply = f"@{user_info.username} {roast}"
@@ -67,6 +69,7 @@ def reply_to_group_messages(cl):
                     thread_ids=[thread.id]
                 )
                 print(f"[REPLIED] To @{user_info.username}: {roast}")
+
             except Exception as e:
                 print(f"[ERROR sending reply] {e}")
         time.sleep(5)
