@@ -7,17 +7,20 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install system dependencies (Pillow requires libjpeg)
+# Install system dependencies for building Cython extensions and Pillow
 RUN apt-get update && apt-get install -y \
+    gcc \
     libjpeg-dev \
-    zlib1g-dev
+    zlib1g-dev \
+    build-essential \
+    && apt-get clean
 
 # Upgrade pip and install Python dependencies
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Install Cython (if required)
-RUN python setup.py build_ext --inplace
+# Install Cython extension
+RUN python setup.py install
 
 # Run the bot script when the container starts
 CMD ["python", "bot.py"]
