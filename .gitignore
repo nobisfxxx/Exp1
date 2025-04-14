@@ -1,13 +1,5 @@
-# Ignore sensitive files
-cookies.json
-
-# Python bytecode files
-__pycache__
+__pycache__/
 *.pyc
-*.pyo
-
-# Cython build files
+*.c
 build/
-
-# Environment files
-.env
+cookies.json
