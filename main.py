@@ -1,11 +1,14 @@
+import os
+import json
 import time
 import random
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from instagrapi.types import DirectMessage
 
-USERNAME = "lynx_chod_hu"
-PASSWORD = "babytingting"
+USERNAME = "rdp_god_hu"
+PASSWORD = "nobihuyaarr@11"
+SESSION_FILE = "session.json"
 
 ROAST_MESSAGES = [
     "bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
@@ -21,40 +24,59 @@ ROAST_MESSAGES = [
     # Add more roast messages here if needed
 ]
 
+def save_session(cl):
+    with open(SESSION_FILE, "w") as f:
+        json.dump(cl.get_settings(), f)
+
+def load_session(cl):
+    if os.path.exists(SESSION_FILE):
+        with open(SESSION_FILE, "r") as f:
+            cl.set_settings(json.load(f))
+        try:
+            cl.get_timeline_feed()
+            print("[LOGIN SUCCESS] Session loaded.")
+            return True
+        except:
+            print("[SESSION INVALID] Login required.")
+    return False
+
 def login():
     cl = Client()
-    cl.delay_range = [1, 3]
+    cl.delay_range = [2, 4]
+    
+    if load_session(cl):
+        return cl
+
     try:
         cl.login(USERNAME, PASSWORD)
-        cl.get_timeline_feed()  # helps set user_id
+        cl.get_timeline_feed()
+        save_session(cl)
         print(f"[LOGIN SUCCESS] Logged in as {USERNAME}")
     except Exception as e:
         print(f"[LOGIN FAILED] {e}")
         exit()
     return cl
 
+def get_my_user_id(cl):
+    try:
+        user = cl.user_info_by_username(USERNAME)
+        return user.pk
+    except Exception as e:
+        print(f"[ERROR] Could not fetch user id: {e}")
+        return None
+
 def get_recent_messages(cl):
     try:
         return cl.direct_threads()
     except LoginRequired:
-        print("[DEBUG] Session expired. Re-logging...")
-        cl.login(USERNAME, PASSWORD)
-        return cl.direct_threads()
+        print("[DEBUG] Session expired.")
+        return []
     except Exception as e:
         print(f"[ERROR getting threads] {e}")
         return []
 
-def reply_to_group_messages(cl):
+def reply_to_group_messages(cl, my_user_id):
     print("[BOT ACTIVE] Forced reply mode (no reply_to)...")
-    
-    # Get the bot's own user ID safely
-    try:
-        my_user = cl.user_info_by_username(USERNAME)
-        my_user_id = my_user.pk
-    except Exception as e:
-        print(f"[ERROR] Could not fetch self user_id: {e}")
-        return
-
     while True:
         threads = get_recent_messages(cl)
         for thread in threads:
@@ -81,7 +103,9 @@ def reply_to_group_messages(cl):
 
 def main():
     cl = login()
-    reply_to_group_messages(cl)
+    my_user_id = get_my_user_id(cl)
+    if my_user_id:
+        reply_to_group_messages(cl, my_user_id)
 
 if __name__ == "__main__":
     main()
