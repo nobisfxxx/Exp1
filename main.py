@@ -59,7 +59,7 @@ def reply_to_group_messages(cl):
         threads = get_recent_threads(cl)
         if not threads:
             print("[DEBUG] No threads fetched. Sleeping...")
-            time.sleep(10)
+            time.sleep(2)
             continue
 
         for thread in threads:
@@ -82,7 +82,7 @@ def reply_to_group_messages(cl):
             except Exception as e:
                 print(f"[ERROR sending reply] {e}")
 
-        time.sleep(10)  # Safe delay between checks
+        time.sleep(2)  # Safe delay between checks
 
 def main():
     cl = safe_login()
