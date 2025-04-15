@@ -4,8 +4,8 @@ from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from instagrapi.types import DirectMessage
 
-USERNAME = "rdp_god_hu"
-PASSWORD = "nobihuyaarr@11"
+USERNAME = "lynx_chod_hu"
+PASSWORD = "babytingting"
 
 ROAST_MESSAGES = [
     "bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
