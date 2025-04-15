@@ -18,6 +18,7 @@ ROAST_MESSAGES = [
     "tu rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
     "tu zyada bolta hai, aur samajh kamta hai.",
     "beta tu abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh.",
+    # add more if needed
 ]
 
 def login():
@@ -25,7 +26,7 @@ def login():
     cl.delay_range = [1, 3]
     try:
         cl.login(USERNAME, PASSWORD)
-        cl.get_timeline_feed()  # helps set user_id
+        cl.get_timeline_feed()
         print(f"[LOGIN SUCCESS] Logged in as {USERNAME}")
     except Exception as e:
         print(f"[LOGIN FAILED] {e}")
@@ -45,7 +46,7 @@ def get_recent_messages(cl):
 
 def reply_to_group_messages(cl):
     print("[BOT ACTIVE] Forced reply mode (no reply_to)...")
-    my_user_id = cl.user_id  # fetch after login to avoid replying to self
+    my_user_id = cl.user_id
 
     while True:
         threads = get_recent_messages(cl)
@@ -54,11 +55,16 @@ def reply_to_group_messages(cl):
                 continue
 
             try:
-                updated_thread = cl.direct_thread(thread.id)  # ensure fresh messages
-                last_msg: DirectMessage = updated_thread.messages[0]
+                updated_thread = cl.direct_thread(thread.id)
+                if not updated_thread.messages:
+                    continue
+
+                # Sort messages by timestamp descending
+                messages = sorted(updated_thread.messages, key=lambda x: x.timestamp, reverse=True)
+                last_msg: DirectMessage = messages[0]
 
                 if last_msg.user_id == my_user_id:
-                    continue  # skip own messages
+                    continue  # skip self messages
 
                 user_info = cl.user_info(last_msg.user_id)
                 roast = random.choice(ROAST_MESSAGES)
