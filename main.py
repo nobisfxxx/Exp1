@@ -18,7 +18,7 @@ ROAST_MESSAGES = [
     "tu rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
     "tu zyada bolta hai, aur samajh kamta hai.",
     "beta tu abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh.",
-    # add more if needed
+    # Add more roast messages here if needed
 ]
 
 def login():
@@ -26,7 +26,7 @@ def login():
     cl.delay_range = [1, 3]
     try:
         cl.login(USERNAME, PASSWORD)
-        cl.get_timeline_feed()
+        cl.get_timeline_feed()  # helps set user_id
         print(f"[LOGIN SUCCESS] Logged in as {USERNAME}")
     except Exception as e:
         print(f"[LOGIN FAILED] {e}")
@@ -46,7 +46,14 @@ def get_recent_messages(cl):
 
 def reply_to_group_messages(cl):
     print("[BOT ACTIVE] Forced reply mode (no reply_to)...")
-    my_user_id = cl.user_id
+    
+    # Get the bot's own user ID safely
+    try:
+        my_user = cl.user_info_by_username(USERNAME)
+        my_user_id = my_user.pk
+    except Exception as e:
+        print(f"[ERROR] Could not fetch self user_id: {e}")
+        return
 
     while True:
         threads = get_recent_messages(cl)
@@ -56,24 +63,16 @@ def reply_to_group_messages(cl):
 
             try:
                 updated_thread = cl.direct_thread(thread.id)
-                if not updated_thread.messages:
-                    continue
-
-                # Sort messages by timestamp descending
-                messages = sorted(updated_thread.messages, key=lambda x: x.timestamp, reverse=True)
-                last_msg: DirectMessage = messages[0]
+                last_msg: DirectMessage = updated_thread.messages[0]
 
                 if last_msg.user_id == my_user_id:
-                    continue  # skip self messages
+                    continue  # skip own messages
 
                 user_info = cl.user_info(last_msg.user_id)
                 roast = random.choice(ROAST_MESSAGES)
                 reply = f"@{user_info.username} {roast}"
 
-                cl.direct_send(
-                    text=reply,
-                    thread_ids=[thread.id]
-                )
+                cl.direct_send(text=reply, thread_ids=[thread.id])
                 print(f"[REPLIED] To @{user_info.username}: {roast}")
 
             except Exception as e:
