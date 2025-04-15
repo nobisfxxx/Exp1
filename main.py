@@ -4,20 +4,20 @@ from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from instagrapi.types import DirectMessage
 
-USERNAME = "rdp_god_hu"
-PASSWORD = "nobihuyaarr@11"
+USERNAME = "leticiamscafuro3"
+PASSWORD = "nobihuyaar@11"
 
 ROAST_MESSAGES = [
-    "bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
-    "jitni baar tu bolta hai, utni baar embarrassment hoti hai Indian education system ko.",
+    "bol aabbasi ki mkb.",
+    "aabssi ki mkb me nobi.",
     "tera logic dekh ke calculator bhi suicide kar le.",
-    "chal na, tujhme aur Google translate me zyada fark nahi.",
-    "tu chup kar, warna tera browser history sabke saamne daal dunga.",
-    "tera reply padke lagta hai ki evolution ne break le liya tha.",
-    "teri soch ka GPS signal lost dikha raha hai.",
-    "tu rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
-    "tu zyada bolta hai, aur samajh kamta hai.",
-    "beta tu abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh.",
+    "chal abasi, tujhme aur Google translate me zyada fark nahi.",
+    "abasi chup kar, warna tera browser history sabke saamne daal dunga.",
+    "abasi reply padke lagta hai ki evolution ne break le liya tha.",
+    "abasi soch ka GPS signal lost dikha raha hai.",
+    "abasi rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
+    "abasi zyada bolta hai, aur samajh kamta hai.",
+    "beta abasi abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh.",
     # Add more if you want
 ]
 
