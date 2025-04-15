@@ -4,7 +4,7 @@ from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from instagrapi.types import DirectMessage
 
-USERNAME = "leticiamscafuro3"
+USERNAME = "createaname01"
 PASSWORD = "nobihuyaar@11"
 
 ROAST_MESSAGES = [
