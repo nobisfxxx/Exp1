@@ -4,20 +4,20 @@ from instagrapi import Client
 from instagrapi.exceptions import LoginRequired
 from instagrapi.types import DirectMessage
 
-USERNAME = "lynx_chod_hu"
-PASSWORD = "babytingting"
+USERNAME = "mafia_ka_nokar"
+PASSWORD = "raazexc1234"
 
 ROAST_MESSAGES = [
-    "bol aabbasi ki mkb.",
-    "aabssi ki mkb me nobi.",
+    "bol Samay or karan ki mkb.",
+    "Samay or karan ki mkb me nobi.",
     "tera logic dekh ke calculator bhi suicide kar le.",
-    "chal abasi, tujhme aur Google translate me zyada fark nahi.",
-    "abasi chup kar, warna tera browser history sabke saamne daal dunga.",
-    "abasi reply padke lagta hai ki evolution ne break le liya tha.",
-    "abasi soch ka GPS signal lost dikha raha hai.",
-    "abasi rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
-    "abasi zyada bolta hai, aur samajh kamta hai.",
-    "beta abasi abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh.",
+    "chal Samay or karan, tujhme aur Google translate me zyada fark nahi.",
+    "Samay or karan chup kar, warna tera browser history sabke saamne daal dunga.",
+    "Samay or karan reply padke lagta hai ki evolution ne break le liya tha.",
+    "Samay or karan soch ka GPS signal lost dikha raha hai.",
+    "Samay or karan rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
+    "Samay or karan zyada bolta hai, aur samajh kamta hai.",
+    "Samay or karan abasi abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh.",
     # Add more if you want
 ]
 
