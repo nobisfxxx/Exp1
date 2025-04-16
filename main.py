@@ -47,9 +47,6 @@ while True:
 
         for thread in threads:
             thread_id = thread.id
-            if not thread.users or cl.user_id not in [u.pk for u in thread.users]:
-                print(f"[+] Not a participant in {thread_id}")
-                continue
 
             if not thread.messages:
                 print(f"[+] No messages in {thread_id}")
