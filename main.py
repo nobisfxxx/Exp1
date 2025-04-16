@@ -1,80 +1,66 @@
 import os
-import time
-import random
-from datetime import datetime, timezone, timedelta
+import json
+from time import sleep
 from instagrapi import Client
-from instagrapi.exceptions import LoginRequired
+from instagrapi.types import StoryMention
 
-# Your Instagram credentials
 USERNAME = "lynx_chod_hu"
 PASSWORD = "nobihuyaar@111"
+DEVICE_FILE = "device.json"
+SESSION_FILE = "session.json"
 
-# Custom roast replies
-ROASTS = [
-    "Bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
-    "Jitni baar tu bolta hai, utni baar embarrassment hoti hai education system ko.",
-    "Tera logic dekh ke calculator bhi crash ho jaye.",
-    "Tu chup kar, warna Google bhi ignore kar dega.",
-    "Bhai tu offline ho ja, tera net zyada samajhdar hai."
-]
-
-# Keep track of last replied message ID per thread
-LAST_REPLIED = {}
+def save_session(client):
+    with open(DEVICE_FILE, "w") as f:
+        json.dump(client.get_settings(), f)
 
 def login():
     cl = Client()
+
+    if os.path.exists(DEVICE_FILE):
+        with open(DEVICE_FILE) as f:
+            cl.set_settings(json.load(f))
+
     try:
+        cl.load_settings(SESSION_FILE)
+        cl.get_timeline_feed()
+        print("[+] Logged in with saved session")
+    except Exception:
+        print("[-] Session invalid, logging in again...")
         cl.login(USERNAME, PASSWORD)
+        cl.dump_settings(SESSION_FILE)
+        save_session(cl)
         print("[+] Logged in successfully")
-    except Exception as e:
-        print("[-] Login failed:", e)
-        exit()
+    
     return cl
 
-def reply_to_groups(cl):
-    while True:
+# Initialize client
+cl = login()
+
+def send_to_all_groups(message):
+    me = cl.user_id
+    threads = cl.direct_threads()
+
+    for thread in threads:
+        if not thread.is_group:
+            continue
+        if me not in [u.pk for u in thread.users]:
+            print(f"[-] Skipping {thread.thread_title} (not a participant)")
+            continue
+
+        mentions = []
+        for user in thread.users:
+            if user.pk != me:
+                mention_text = f"@{user.username}"
+                mentions.append(mention_text)
+
+        full_message = message + "\n\n" + " ".join(mentions)
+
         try:
-            threads = cl.direct_threads(amount=10)
-            for thread in threads:
-                if not thread.is_group or not thread.users:
-                    continue
-
-                # Skip if bot is not in the group anymore
-                if cl.user_id not in [u.pk for u in thread.users]:
-                    continue
-
-                if not thread.messages:
-                    continue
-
-                last_msg = thread.messages[0]
-                msg_time = last_msg.timestamp.replace(tzinfo=timezone.utc)
-                now = datetime.now(timezone.utc)
-
-                # Only reply to fresh messages within 60 seconds
-                if (now - msg_time).total_seconds() > 60:
-                    continue
-
-                # Skip if already replied to this message
-                if LAST_REPLIED.get(thread.id) == last_msg.id:
-                    continue
-
-                # Skip own messages
-                if last_msg.user_id == cl.user_id:
-                    continue
-
-                roast = random.choice(ROASTS)
-                cl.direct_send(roast, [thread.id])
-                LAST_REPLIED[thread.id] = last_msg.id
-                print(f"[+] Replied in thread {thread.id}: {roast}")
-                time.sleep(3)
-
-        except LoginRequired:
-            print("[-] Session expired. Re-logging in...")
-            cl = login()
+            cl.direct_send(full_message, [thread.id])
+            print(f"[+] Sent to: {thread.thread_title}")
+            sleep(3)
         except Exception as e:
-            print("[-] Error:", e)
-            time.sleep(5)
+            print(f"[-] Failed to send to {thread.thread_title}: {e}")
 
-if __name__ == "__main__":
-    client = login()
-    reply_to_groups(client)
+# Customize your message below
+send_to_all_groups("oiii massage maat kar warna nobi aa jaega")
