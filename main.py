@@ -11,16 +11,25 @@ cookies = {
     'rur': '"PRN\\0544815764655\\0541776346914:01f70c1c6b15d54b0fa9377fa5465397bb70f7045f7415af439dbb8586e431fced2c06fb"',
 }
 
-# Message to send
-reply_message = "@sender Oii massage maat kar warga nobi aa jaega"
-
 # Instagram API base URL
 base_url = 'https://i.instagram.com/api/v1/'
 
+# Correct User-Agent to match session device
+headers = {
+    'User-Agent': 'Instagram 272.0.0.18.84 Android (14/34; 480dpi; 1080x2400; Infinix; GT10Pro; GT10Pro; mt6893; en_US)',
+    'Accept-Language': 'en-US',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+}
+
+# Message to send
+reply_message = "@sender Oii massage maat kar warga nobi aa jaega"
+
 # Fetch the list of group chats
-def get_active_groups(cookies):
+def get_active_groups(cookies, headers):
     url = f"{base_url}direct_v2/inbox/"
-    response = requests.get(url, cookies=cookies)
+    response = requests.get(url, cookies=cookies, headers=headers)
     
     print(f"Fetching active groups... Status code: {response.status_code}")  # Debugging output
     
@@ -37,12 +46,12 @@ def get_active_groups(cookies):
         return []
 
 # Send message to the group
-def send_reply_to_group(thread_id, message, cookies):
+def send_reply_to_group(thread_id, message, cookies, headers):
     url = f"{base_url}direct_v2/threads/{thread_id}/broadcast/"
     data = {
         'message': message
     }
-    response = requests.post(url, cookies=cookies, data=data)
+    response = requests.post(url, cookies=cookies, headers=headers, data=data)
     
     if response.status_code == 200:
         print(f"Replied to group {thread_id} successfully.")
@@ -51,7 +60,7 @@ def send_reply_to_group(thread_id, message, cookies):
 
 # Main execution
 def main():
-    active_groups = get_active_groups(cookies)
+    active_groups = get_active_groups(cookies, headers)
     
     if not active_groups:
         print("No active groups to reply to.")
@@ -59,7 +68,7 @@ def main():
     
     # Loop through active groups and send a message
     for group_id in active_groups:
-        send_reply_to_group(group_id, reply_message, cookies)
+        send_reply_to_group(group_id, reply_message, cookies, headers)
         time.sleep(3)  # Add a delay to stay under radar (rate-limiting)
 
 if __name__ == "__main__":
