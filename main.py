@@ -1,97 +1,80 @@
 import os
-import json
-import random
 import time
-from datetime import datetime, timedelta, timezone
+import random
+from datetime import datetime, timezone, timedelta
 from instagrapi import Client
+from instagrapi.exceptions import LoginRequired
 
-# Set environment-based login
-USERNAME = os.environ.get("IG_USERNAME")
-PASSWORD = os.environ.get("IG_PASSWORD")
+# Your Instagram credentials
+USERNAME = "lynx_chod_hu"
+PASSWORD = "nobihuyaar@111"
 
-# File paths (Railway-safe)
-SESSION_FILE = "/tmp/session.json"
-REPLY_TRACK_FILE = "/tmp/replied_messages.json"
-STOP_FILE = "/tmp/stopped_threads.json"
-
-# Message bank
-REPLY_MESSAGES = [
-    "bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
-    "jitni baar tu bolta hai, utni baar embarrassment hoti hai Indian education system ko.",
-    "tera logic dekh ke calculator bhi suicide kar le.",
-    "chal na, tujhme aur Google translate me zyada fark nahi.",
-    "tu chup kar, warna tera browser history sabke saamne daal dunga.",
-    "tera reply padke lagta hai ki evolution ne break le liya tha.",
-    "teri soch ka GPS signal lost dikha raha hai.",
-    "tu rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
-    "tu zyada bolta hai, aur samajh kamta hai.",
-    "beta tu abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh."
+# Custom roast replies
+ROASTS = [
+    "Bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
+    "Jitni baar tu bolta hai, utni baar embarrassment hoti hai education system ko.",
+    "Tera logic dekh ke calculator bhi crash ho jaye.",
+    "Tu chup kar, warna Google bhi ignore kar dega.",
+    "Bhai tu offline ho ja, tera net zyada samajhdar hai."
 ]
 
-# Initialize client
-cl = Client()
-
-# Load replied message IDs
-try:
-    with open(REPLY_TRACK_FILE, "r") as f:
-        replied_messages = json.load(f)
-except:
-    replied_messages = {}
-
-# Load stopped threads
-try:
-    with open(STOP_FILE, "r") as f:
-        stopped_threads = json.load(f)
-except:
-    stopped_threads = []
-
-def save_replied_messages():
-    with open(REPLY_TRACK_FILE, "w") as f:
-        json.dump(replied_messages, f)
-
-def save_stopped_threads():
-    with open(STOP_FILE, "w") as f:
-        json.dump(stopped_threads, f)
+# Keep track of last replied message ID per thread
+LAST_REPLIED = {}
 
 def login():
-    if os.path.exists(SESSION_FILE):
-        try:
-            cl.load_settings(SESSION_FILE)
-            cl.login(USERNAME, PASSWORD)
-            cl.dump_settings(SESSION_FILE)
-            return
-        except:
-            pass
-    cl.login(USERNAME, PASSWORD)
-    cl.dump_settings(SESSION_FILE)
+    cl = Client()
+    try:
+        cl.login(USERNAME, PASSWORD)
+        print("[+] Logged in successfully")
+    except Exception as e:
+        print("[-] Login failed:", e)
+        exit()
+    return cl
 
-def auto_reply_all_groups():
+def reply_to_groups(cl):
     while True:
         try:
-            threads = cl.direct_threads(amount=20)
+            threads = cl.direct_threads(amount=10)
             for thread in threads:
-                if not thread.users or thread.thread_id in stopped_threads:
+                if not thread.is_group or not thread.users:
                     continue
-                messages = cl.direct_messages(thread.id, amount=10)
-                for message in messages[::-1]:
-                    # Skip if too old
-                    if datetime.now(timezone.utc) - message.timestamp > timedelta(seconds=60):
-                        continue
-                    if message.id in replied_messages.get(thread.id, []):
-                        continue
-                    if message.user_id == cl.user_id:
-                        continue
 
-                    text = random.choice(REPLY_MESSAGES)
-                    cl.direct_send(text, [thread.id], reply_to_message_id=message.id)
-                    print(f"[+] Replied in thread {thread.id} to {message.user_id}")
-                    replied_messages.setdefault(thread.id, []).append(message.id)
-                    save_replied_messages()
-                    time.sleep(3)
+                # Skip if bot is not in the group anymore
+                if cl.user_id not in [u.pk for u in thread.users]:
+                    continue
+
+                if not thread.messages:
+                    continue
+
+                last_msg = thread.messages[0]
+                msg_time = last_msg.timestamp.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+
+                # Only reply to fresh messages within 60 seconds
+                if (now - msg_time).total_seconds() > 60:
+                    continue
+
+                # Skip if already replied to this message
+                if LAST_REPLIED.get(thread.id) == last_msg.id:
+                    continue
+
+                # Skip own messages
+                if last_msg.user_id == cl.user_id:
+                    continue
+
+                roast = random.choice(ROASTS)
+                cl.direct_send(roast, [thread.id])
+                LAST_REPLIED[thread.id] = last_msg.id
+                print(f"[+] Replied in thread {thread.id}: {roast}")
+                time.sleep(3)
+
+        except LoginRequired:
+            print("[-] Session expired. Re-logging in...")
+            cl = login()
         except Exception as e:
-            print(f"[!] Error: {e}. Retrying in 15s...")
-            time.sleep(15)
+            print("[-] Error:", e)
+            time.sleep(5)
 
-# Login and run
-login()
-auto_reply_all_groups()
+if __name__ == "__main__":
+    client = login()
+    reply_to_groups(client)
