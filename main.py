@@ -1,72 +1,110 @@
-import time
+import requests
 import json
-import random
-from datetime import datetime, timedelta
-from instagrapi import Client
+import time
+from datetime import datetime, timezone
 
-# Configuration Constants
-DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
-TRIGGER_PHRASE = "hoi nobi is here"
-TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work weelll?.. If not make changes the the script.. till then boii boii boss"
-STOP_COMMAND = "stop the bot on this gc"
-RESUME_COMMAND = "resume the bot on this gc"
-PASSWORD_REQUEST = "Okay, boss. What's the password?"
-VALID_PASSWORD = "17092004"
+# Load cookies from session.json
+with open("session.json", "r") as f:
+    cookies = json.load(f)
+
+# Create session and headers
+session = requests.Session()
+session.cookies.update(cookies)
+user_id = cookies.get("ds_user_id")
+
+headers = {
+    "User-Agent": "Instagram 272.0.0.18.84 Android",
+    "X-CSRFToken": cookies.get("csrftoken"),
+}
+
+BASE_URL = "https://i.instagram.com/api/v1"
+REPLY_MESSAGE = "@{sender} Oii massage maat kar warga nobi aa jaega"
 REPLY_DELAY = 3  # seconds
+SEEN_INTERVAL = 60  # only reply to messages from the last 60 seconds
 
-# Device and session setup (assuming the cookies are loaded from the file)
-def load_session():
-    with open('session.json', 'r') as f:
-        session_data = json.load(f)
-    cl = Client()
-    cl.set_device(session_data["device"])
-    cl.set_cookie(session_data["cookies"])
-    return cl
+# Track replied message IDs and spammy groups
+replied_ids = set()
+spammy_groups = {}
+blacklist = set()
 
-# Function to check if bot is part of the group
-def is_participant(cl, thread_id):
-    thread_info = cl.direct_thread(thread_id)
-    for participant in thread_info['users']:
-        if participant['pk'] == cl.user_id:
-            return True
+def get_threads():
+    url = f"{BASE_URL}/direct_v2/inbox/"
+    res = session.get(url, headers=headers)
+    return res.json().get("inbox", {}).get("threads", [])
+
+def send_reply(thread_id, item_id, user_name):
+    text = REPLY_MESSAGE.format(sender=user_name)
+    payload = {"action": "send_item", "text": text}
+    url = f"{BASE_URL}/direct_v2/threads/{thread_id}/items/text/"
+    res = session.post(url, data=payload, headers=headers)
+    if res.status_code == 200:
+        print(f"[+] Replied to {user_name} in thread {thread_id}")
+    else:
+        print(f"[!] Failed to reply: {res.text}")
+
+def should_skip_thread(thread):
+    if not thread.get("is_group", False):
+        return True
+    if thread.get("thread_id") in blacklist:
+        return True
+    if not any(x.get("user_id") == user_id for x in thread.get("users", [])):
+        print(f"[!] Skipping - kicked from group {thread.get('thread_title')}")
+        return True
     return False
 
-# Function to send message with custom roast
-def send_roast_message(cl, thread_id, message, user_id):
-    roast_message = f"{message} @{user_id}"  # Example roast message
-    cl.direct_send(roast_message, thread_id)
+def process_threads():
+    threads = get_threads()
+    for thread in threads:
+        thread_id = thread.get("thread_id")
 
-# Main function to handle message processing
-def process_group_messages(cl):
-    while True:
+        if should_skip_thread(thread):
+            continue
+
+        last_msg = thread.get("items", [])[0] if thread.get("items") else None
+        if not last_msg:
+            continue
+
+        item_id = last_msg.get("item_id")
+        timestamp = int(last_msg.get("timestamp", 0)) / 1000000
+        sender = last_msg.get("user_id")
+
+        if item_id in replied_ids:
+            continue
+
+        # Time check (only respond to recent messages)
+        now = datetime.now(timezone.utc).timestamp()
+        if now - timestamp > SEEN_INTERVAL:
+            continue
+
+        # Skip group name change spam
+        if last_msg.get("item_type") == "placeholder":
+            print(f"[!] Group name change spam detected, blacklisting {thread_id}")
+            blacklist.add(thread_id)
+            continue
+
+        # Get sender's username
+        sender_name = "unknown"
+        for u in thread.get("users", []):
+            if u["pk"] == sender:
+                sender_name = u["username"]
+
         try:
-            threads = cl.direct_threads()
-            for thread in threads:
-                thread_id = thread['thread_id']
-                last_message = thread['last_activity_at']
-
-                # Skip threads where bot is no longer a participant
-                if not is_participant(cl, thread_id):
-                    print(f"Skipping {thread_id}, not a participant.")
-                    continue
-
-                # Skip if last message is a name change
-                if "left the group" in last_message['text']:
-                    print(f"Skipping {thread_id}, name change detected.")
-                    continue
-
-                # Limit reply to 3 seconds between messages
-                print(f"Replying in thread: {thread_id}")
-                send_roast_message(cl, thread_id, DEFAULT_REPLY_MESSAGE, thread['users'][0]['username'])
-                time.sleep(REPLY_DELAY)  # Respect the delay between messages
-
+            send_reply(thread_id, item_id, sender_name)
+            replied_ids.add(item_id)
+            time.sleep(REPLY_DELAY)
         except Exception as e:
-            print(f"Error: {str(e)}")
-            # Optional: Auto-relogin if session is invalid
-            cl = load_session()
-            time.sleep(10)
+            print(f"[!] Error replying: {e}")
+            continue
 
-# Main loop to run bot
-if __name__ == "__main__":
-    client = load_session()
-    process_group_messages(client)
+# Main loop
+print("Instagram roast bot started...")
+while True:
+    try:
+        process_threads()
+        time.sleep(5)
+    except KeyboardInterrupt:
+        print("\n[!] Exiting bot.")
+        break
+    except Exception as e:
+        print(f"[!] Main loop error: {e}")
+        time.sleep(5)
