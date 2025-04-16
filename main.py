@@ -1,91 +1,81 @@
-import time
 import json
+import time
 import requests
-from datetime import datetime, timezone
 
-# === CONFIG ===
-REPLY_MESSAGE = "@{username} Oii massage maat kar warga nobi aa jaega"
-REPLY_DELAY = 3  # seconds
-COOKIES_JSON = """<PUT_YOUR_JSON_COOKIE_HERE>"""
-HEADERS = {
-    "user-agent": "Mozilla/5.0 (Linux; Android 14; Infinix X6739) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-    "accept": "*/*",
-    "accept-language": "en-US,en;q=0.9",
-    "x-ig-app-id": "936619743392459",
-    "x-requested-with": "XMLHttpRequest",
-    "referer": "https://www.instagram.com/direct/inbox/"
+# Load cookies from a JSON file
+with open("cookies.json", "r") as f:
+    cookies = json.load(f)
+
+# Define your custom reply message
+def custom_reply_message(sender):
+    return f"@{sender} Oii massage maat kar warga nobi aa jaega"
+
+# Instagram API base URL
+BASE_URL = "https://i.instagram.com/api/v1"
+
+# Headers for making requests with cookies
+headers = {
+    "User-Agent": "Instagram 272.0.0.18.84 Android (Android 14, Infinix GT 10 Pro)",
+    "Accept-Language": "en-US",
+    "Connection": "close",
 }
 
-# === SETUP COOKIES ===
-cookie_dict = {}
-cookie_list = json.loads(COOKIES_JSON)
-for c in cookie_list:
-    cookie_dict[c['name']] = c['value']
+# Function to create a session with the provided cookies
+def create_session():
+    session = requests.Session()
+    for cookie in cookies:
+        session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
+    return session
 
-session = requests.Session()
-session.cookies.update(cookie_dict)
-session.headers.update(HEADERS)
-
-
-def get_threads():
+# Function to check if the bot has been kicked out of a group chat
+def is_kicked_from_group(session, group_id):
     try:
-        url = "https://www.instagram.com/api/v1/direct_v2/inbox/"
-        res = session.get(url)
-        if res.status_code == 200:
-            return res.json().get("inbox", {}).get("threads", [])
+        response = session.get(f"{BASE_URL}/groups/{group_id}/info/")
+        if response.status_code == 200:
+            group_data = response.json()
+            # Check if the bot is still part of the group
+            for member in group_data['members']:
+                if member['username'] == 'your_instagram_username':
+                    return False  # Not kicked
+            return True  # Kicked
         else:
-            print(f"[!] Inbox error: {res.status_code}")
+            print(f"Failed to check group {group_id}: {response.text}")
+            return False
     except Exception as e:
-        print(f"[!] Inbox fetch failed: {e}")
-    return []
+        print(f"Error checking kicked status for group {group_id}: {e}")
+        return False
 
+# Function to send the custom reply message to the group
+def send_reply(session, group_id, message):
+    try:
+        payload = {
+            "message": message,
+            "group_id": group_id
+        }
+        response = session.post(f"{BASE_URL}/groups/{group_id}/send_message/", data=payload, headers=headers)
+        if response.status_code == 200:
+            print(f"Message sent to group {group_id}: {message}")
+        else:
+            print(f"Failed to send message to group {group_id}: {response.text}")
+    except Exception as e:
+        print(f"Error sending message to group {group_id}: {e}")
 
-def is_bot_participant(thread):
-    for user in thread.get("users", []):
-        if user.get("pk") == cookie_dict.get("ds_user_id"):
-            return True
-    return False
+# Main function to process the group chats
+def process_groups():
+    session = create_session()  # Create a session with the cookies
 
+    while True:
+        # Replace with actual group IDs and usernames
+        group_ids = ["group1_id", "group2_id", "group3_id"]  # Example group IDs
+        for group_id in group_ids:
+            if not is_kicked_from_group(session, group_id):
+                sender = "example_sender"  # Replace with actual sender logic
+                message = custom_reply_message(sender)
+                send_reply(session, group_id, message)
+            else:
+                print(f"Bot is kicked from group {group_id}. Skipping...")
+        
+        time.sleep(3)  # Delay between replies to stay under radar
 
-def send_reply(thread_id, message, reply_to_item_id):
-    url = "https://www.instagram.com/api/v1/direct_v2/threads/{}/items/".format(thread_id)
-    data = {
-        "action": "send_item",
-        "item_type": "text",
-        "text": message,
-        "reply_type": "quote",
-        "client_context": str(int(time.time() * 1000)),
-        "mutation_token": str(int(time.time() * 1000)),
-        "_csrftoken": cookie_dict.get("csrftoken"),
-        "_uid": cookie_dict.get("ds_user_id"),
-        "_uuid": cookie_dict.get("ig_did"),
-        "reply_to_item_id": reply_to_item_id,
-    }
-    res = session.post(url, data=data)
-    print(f"[+] Replied to thread {thread_id}: {res.status_code}")
-
-
-seen_ids = set()
-while True:
-    threads = get_threads()
-    for thread in threads:
-        if not is_bot_participant(thread):
-            continue
-
-        if not thread.get("items"):
-            continue
-
-        last_item = thread["items"][0]
-        item_id = last_item["item_id"]
-        user_id = last_item.get("user_id") or last_item.get("sender_id")
-        username = last_item.get("user", {}).get("username", "user")
-
-        if item_id in seen_ids:
-            continue
-
-        seen_ids.add(item_id)
-        mention_msg = REPLY_MESSAGE.replace("{username}", username)
-        send_reply(thread_id=thread["thread_id"], message=mention_msg, reply_to_item_id=item_id)
-        time.sleep(REPLY_DELAY)
-
-    time.sleep(5)
+if __name__ == "__main__":
+    process_groups()
