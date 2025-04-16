@@ -55,8 +55,10 @@ def send_reply_to_group(thread_id, message, cookies, headers):
     
     if response.status_code == 200:
         print(f"Replied to group {thread_id} successfully.")
+    elif response.status_code == 404:
+        print(f"Failed to send message to group {thread_id}: Group not found or bot is not in the group.")
     else:
-        print(f"Failed to send message to group {thread_id}, Status code: {response.status_code}")
+        print(f"Failed to send message to group {thread_id}, Status code: {response.status_code}, Response: {response.text}")
 
 # Main execution
 def main():
