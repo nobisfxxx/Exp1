@@ -1,93 +1,72 @@
-import requests
-import json
 import time
+import json
+import random
+from datetime import datetime, timedelta
+from instagrapi import Client
 
-# Define the base URL and endpoint for Instagram's direct API
-base_url = "https://i.instagram.com/api/v1/"
+# Configuration Constants
+DEFAULT_REPLY_MESSAGE = "oii massage maat kar warna lynx ki maa shod ke feekkk dunga"
+TRIGGER_PHRASE = "hoi nobi is here"
+TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work weelll?.. If not make changes the the script.. till then boii boii boss"
+STOP_COMMAND = "stop the bot on this gc"
+RESUME_COMMAND = "resume the bot on this gc"
+PASSWORD_REQUEST = "Okay, boss. What's the password?"
+VALID_PASSWORD = "17092004"
+REPLY_DELAY = 3  # seconds
 
-# Your cookies (replace these with your actual cookies)
-cookies = {
-    "sessionid": "4815764655%3AKIze6plmPWbhIc%3A5%3AAYeKoHWOIAtE_3qGgiW1mHJ1qXJBVTma2g5HbUr3Cw",
-    "ds_user_id": "4815764655",
-    "csrftoken": "CnUT88Fi2a1yAzOp1ACYqMKj6gRfs6Lf",
-    "ig_did": "01ECD94D-82CA-4A2B-B39C-21F48E6309E0",
-    "mid": "Z_-yPwABAAGrQkPVuZUxYwTPbtND",
-    "rur": "\"PRN\\0544815764655\\0541776349673:01f7385137ffcf50a687c6886f6e244ab2159c7a3c25def40ac7b42d88596c926d5dd4ce\"",
-    "datr": "PrL_ZxaJ-fbBXO66IDH9loFw",
-    "dpr": "2.5",
-    "wd": "432x850"
-}
+# Device and session setup (assuming the cookies are loaded from the file)
+def load_session():
+    with open('session.json', 'r') as f:
+        session_data = json.load(f)
+    cl = Client()
+    cl.set_device(session_data["device"])
+    cl.set_cookie(session_data["cookies"])
+    return cl
 
-# Custom headers to match a real Instagram request (important for avoiding detection)
-headers = {
-    "User-Agent": "Instagram 272.0.0.18.84 Android (34/14; 480dpi; 1080x2400; INFINIX; GT10Pro; GT 10 Pro; mt6893; en_US)",
-    "Content-Type": "application/json",
-    "Accept": "*/*",
-    "X-Instagram-AJAX": "1",
-    "X-CSRFToken": cookies["csrftoken"]
-}
+# Function to check if bot is part of the group
+def is_participant(cl, thread_id):
+    thread_info = cl.direct_thread(thread_id)
+    for participant in thread_info['users']:
+        if participant['pk'] == cl.user_id:
+            return True
+    return False
 
-# Fetch active groups
-def get_active_groups(cookies, headers):
-    url = f"{base_url}direct_v2/inbox/"
-    response = requests.get(url, cookies=cookies, headers=headers)
-    
-    print(f"Fetching active groups... Status code: {response.status_code}")  # Debugging output
-    if response.status_code == 200:
-        data = response.json()
-        active_groups = []
-        for thread in data.get('inbox', {}).get('threads', []):
-            if 'thread_id' in thread and thread['is_group'] and thread['users']:
-                # Check if bot is a member
-                bot_is_member = any(user['pk'] == cookies['ds_user_id'] for user in thread['users'])
-                if bot_is_member:
-                    active_groups.append(thread['thread_id'])
-        return active_groups
-    else:
-        print(f"Failed to fetch active groups. Response: {response.text}")  # Debugging output
-        return []
+# Function to send message with custom roast
+def send_roast_message(cl, thread_id, message, user_id):
+    roast_message = f"{message} @{user_id}"  # Example roast message
+    cl.direct_send(roast_message, thread_id)
 
-# Send message to a group
-def send_message_to_group(thread_id, message, cookies, headers):
-    url = f"{base_url}direct_v2/threads/{thread_id}/broadcast/text/"
-    payload = {
-        "text": message
-    }
-    response = requests.post(url, data=json.dumps(payload), cookies=cookies, headers=headers)
-    
-    if response.status_code == 200:
-        print(f"Message sent to group {thread_id}")
-    else:
-        print(f"Failed to send message to group {thread_id}: {response.text}")
+# Main function to handle message processing
+def process_group_messages(cl):
+    while True:
+        try:
+            threads = cl.direct_threads()
+            for thread in threads:
+                thread_id = thread['thread_id']
+                last_message = thread['last_activity_at']
 
-# Main function
-def main():
-    active_groups = get_active_groups(cookies, headers)
-    
-    if not active_groups:
-        print("No active groups to reply to.")
-        return
+                # Skip threads where bot is no longer a participant
+                if not is_participant(cl, thread_id):
+                    print(f"Skipping {thread_id}, not a participant.")
+                    continue
 
-    # Define the reply message template
-    message_template = "@{sender} Oii massage maat kar warga nobi aa jaega"
-    
-    for group in active_groups:
-        # Get the latest thread data to reply to the most recent messages
-        url = f"{base_url}direct_v2/threads/{group}/"
-        response = requests.get(url, cookies=cookies, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            for thread in data.get('thread', {}).get('items', []):
-                if 'user' in thread:
-                    sender = thread['user']['username']
-                    # Send the message to the group with the sender's username
-                    message = message_template.format(sender=sender)
-                    send_message_to_group(group, message, cookies, headers)
-                    time.sleep(3)  # Adding a small delay to avoid rate-limiting
-        else:
-            print(f"Failed to fetch thread data for group {group}. Response: {response.text}")
+                # Skip if last message is a name change
+                if "left the group" in last_message['text']:
+                    print(f"Skipping {thread_id}, name change detected.")
+                    continue
 
-# Run the bot
+                # Limit reply to 3 seconds between messages
+                print(f"Replying in thread: {thread_id}")
+                send_roast_message(cl, thread_id, DEFAULT_REPLY_MESSAGE, thread['users'][0]['username'])
+                time.sleep(REPLY_DELAY)  # Respect the delay between messages
+
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            # Optional: Auto-relogin if session is invalid
+            cl = load_session()
+            time.sleep(10)
+
+# Main loop to run bot
 if __name__ == "__main__":
-    main()
+    client = load_session()
+    process_group_messages(client)
