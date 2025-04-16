@@ -38,8 +38,10 @@ def get_active_groups(cookies, headers):
         active_groups = []
         for thread in data.get('inbox', {}).get('threads', []):
             if 'thread_id' in thread and thread['is_group'] and thread['users']:
-                # Only consider groups where bot is a member
-                active_groups.append(thread['thread_id'])
+                # Check if the bot is a participant in the group (check for the bot's user ID)
+                bot_is_member = any(user['pk'] == cookies['ds_user_id'] for user in thread['users'])
+                if bot_is_member:
+                    active_groups.append(thread['thread_id'])
         return active_groups
     else:
         print(f"Failed to fetch active groups. Response: {response.text}")  # Debugging output
