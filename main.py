@@ -1,106 +1,102 @@
-import requests
 import time
-import json
-from datetime import datetime, timezone
+import random
+from instagrapi import Client
+from datetime import datetime, timezone, timedelta
 
-# === CONFIG ===
-REPLY_DELAY = 3
-REPLY_MESSAGE = "@{username} Oii massage maat kar warga nobi aa jaega"
+# === SESSION COOKIE LOGIN ===
+SESSION_ID = "4815764655%3ABpgYGEkoM6HMII%3A2%3AAYcFyc4OBkVLhiqNHXmQqP2N8IxvKbZmQZDTyA5jVA"
 
-# === COOKIES FROM EXPORT ===
-COOKIES = {
-    "ds_user_id": "4815764655",
-    "sessionid": "4815764655%3AKIze6plmPWbhIc%3A5%3AAYeKoHWOIAtE_3qGgiW1mHJ1qXJBVTma2g5HbUr3Cw",
-    "csrftoken": "CnUT88Fi2a1yAzOp1ACYqMKj6gRfs6Lf",
-    "mid": "Z_-yPwABAAGrQkPVuZUxYwTPbtND",
-    "ig_did": "01ECD94D-82CA-4A2B-B39C-21F48E6309E0",
-    "rur": "PRN",
+# === DEVICE SPOOFING ===
+DEVICE = {
+    "app_version": "272.0.0.18.84",
+    "android_version": 34,
+    "android_release": "14",
+    "dpi": "480dpi",
+    "resolution": "1080x2400",
+    "manufacturer": "infinix",
+    "device": "Infinix-X6739",
+    "model": "Infinix X6739",
+    "cpu": "mt6893"
 }
 
-HEADERS = {
-    "User-Agent": "Instagram 267.0.0.19.107 Android",
-    "X-CSRFToken": COOKIES["csrftoken"],
-}
+# === BOT SETTINGS ===
+TRIGGER_PHRASE = "hoi nobi is here"
+TRIGGER_RESPONSE = "hey boss.. I missed you... Am I doing my work well?.. If not, make changes to the script.. till then boii boii boss"
+ROASTS = [
+    "kya chomu message bhej diya re tu", "teri typing dekh ke keyboard bhi sharma gaya",
+    "abe chup reh, tere jese toh recharge bhi expire ho jate hain", "tumse na ho payega bhai"
+]
+REPLY_DELAY = 3  # seconds between replies
 
-SESSION = requests.Session()
-SESSION.headers.update(HEADERS)
-SESSION.cookies.update(COOKIES)
+# === Initialize Instagram Client ===
+cl = Client()
+cl.set_device(DEVICE)
+cl.login_by_sessionid(SESSION_ID)
+print("[+] Logged in via session ID.")
 
-def get_group_threads():
-    url = "https://i.instagram.com/api/v1/direct_v2/inbox/"
+last_reply_time = datetime.now(timezone.utc) - timedelta(seconds=REPLY_DELAY)
+
+# Main loop
+while True:
     try:
-        res = SESSION.get(url)
-        if res.status_code != 200:
-            print(f"Failed to fetch inbox: {res.status_code}")
-            return []
+        print("[+] Fetching threads...")
+        threads = cl.direct_threads()
+        print(f"[+] Retrieved {len(threads)} threads.")
 
-        data = res.json()
-        return data.get("inbox", {}).get("threads", [])
-    except Exception as e:
-        print(f"[!] Inbox fetch error: {e}")
-        return []
-
-def is_recent_message(message_timestamp):
-    try:
-        message_time = datetime.fromtimestamp(message_timestamp, tz=timezone.utc)
         now = datetime.now(timezone.utc)
-        return (now - message_time).total_seconds() <= 60
-    except Exception as e:
-        print(f"[!] Timestamp error: {e}")
-        return False
-
-def send_reply(thread_id, item_id, username):
-    try:
-        message = REPLY_MESSAGE.format(username=username)
-        payload = {
-            "action": "send_item",
-            "client_context": str(int(time.time() * 1000)),
-            "item_type": "text",
-            "text": message,
-        }
-
-        url = f"https://i.instagram.com/api/v1/direct_v2/threads/{thread_id}/items/"
-        res = SESSION.post(url, data=payload)
-        if res.status_code == 200:
-            print(f"Replied to @{username} in {thread_id}")
-        else:
-            print(f"[!] Failed to reply to {thread_id}: {res.status_code}")
-    except Exception as e:
-        print(f"[!] Reply error: {e}")
-
-def main():
-    while True:
-        threads = get_group_threads()
 
         for thread in threads:
-            thread_id = thread.get("thread_id")
-            users = thread.get("users", [])
-            last_permanent_item = thread.get("last_permanent_item", {})
-            last_message_type = last_permanent_item.get("item_type")
-
-            # Skip non-text messages
-            if last_message_type != "text":
+            thread_id = thread.id
+            if not thread.users or cl.user_id not in [u.pk for u in thread.users]:
+                print(f"[+] Not a participant in {thread_id}")
                 continue
 
-            timestamp = int(last_permanent_item.get("timestamp", "0")) // 1000000
-            if not is_recent_message(timestamp):
+            if not thread.messages:
+                print(f"[+] No messages in {thread_id}")
                 continue
 
-            # Check if still in the group
-            if not thread.get("is_group") or not thread.get("viewer_is_active"):
-                print(f"Skipped {thread_id} (you’re not in this group)")
-                continue
+            for msg in thread.messages:
+                if msg.timestamp is None:
+                    continue
 
-            # Get sender username
-            sender = last_permanent_item.get("user_id")
-            sender_username = next((u["username"] for u in users if u["pk"] == sender), "user")
+                # Adjust timestamp if it's naive
+                if msg.timestamp.tzinfo is None:
+                    msg.timestamp = msg.timestamp.replace(tzinfo=timezone.utc)
 
-            item_id = last_permanent_item.get("item_id")
-            if thread_id and item_id and sender_username:
-                send_reply(thread_id, item_id, sender_username)
-                time.sleep(REPLY_DELAY)
+                time_diff = now - msg.timestamp
+                if time_diff.total_seconds() > 60:
+                    print(f"[+] Skipping message in {thread_id} as it is older than 60 seconds")
+                    continue
 
-        time.sleep(3)
+                if now - last_reply_time < timedelta(seconds=REPLY_DELAY):
+                    print("[+] Waiting due to reply delay.")
+                    continue
 
-if __name__ == "__main__":
-    main()
+                text = msg.text or ""
+                sender_username = cl.user_info(msg.user_id).username
+
+                if TRIGGER_PHRASE.lower() in text.lower():
+                    print(f"[+] Trigger phrase found in message: {text}")
+                    cl.direct_send(TRIGGER_RESPONSE, [thread_id])
+                    print(f"[trigger] Replied in {thread_id}")
+                    last_reply_time = now
+                    continue
+
+                roast = random.choice(ROASTS)
+                reply_text = f"@{sender_username} {roast}"
+                try:
+                    cl.direct_answer(thread_id, msg.id, reply_text)
+                    print(f"[reply] {reply_text} -> {thread_id}")
+                    last_reply_time = now
+                    time.sleep(REPLY_DELAY)
+                except Exception as e:
+                    print(f"[!] Failed to reply in {thread_id}: {e}")
+                    if "403" in str(e):
+                        print("Sleeping 90 seconds after 403...")
+                        time.sleep(90)
+
+        time.sleep(8)  # Delay to prevent overloading
+
+    except Exception as e:
+        print("[error]", e)
+        time.sleep(20)  # Retry after failure
