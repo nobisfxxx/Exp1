@@ -1,74 +1,64 @@
 import requests
-import json
 import time
 
-# Define your cookies and API URL
+# Your session cookie details (use the provided cookie values)
 cookies = {
-    "sessionid": "4815764655%3AKIze6plmPWbhIc%3A5%3AAYeKoHWOIAtE_3qGgiW1mHJ1qXJBVTma2g5HbUr3Cw",
-    "ds_user_id": "4815764655",
-    "csrftoken": "CnUT88Fi2a1yAzOp1ACYqMKj6gRfs6Lf",
-    "ig_did": "01ECD94D-82CA-4A2B-B39C-21F48E6309E0",
-    "mid": "Z_-yPwABAAGrQkPVuZUxYwTPbtND",
-    "rur": "\"PRN\\0544815764655\\0541776346914:01f70c1c6b15d54b0fa9377fa5465397bb70f7045f7415af439dbb8586e431fced2c06fb\"",
-    # Add all other relevant cookies
+    'sessionid': '4815764655%3AKIze6plmPWbhIc%3A5%3AAYeKoHWOIAtE_3qGgiW1mHJ1qXJBVTma2g5HbUr3Cw',
+    'ds_user_id': '4815764655',
+    'csrftoken': 'CnUT88Fi2a1yAzOp1ACYqMKj6gRfs6Lf',
+    'ig_did': '01ECD94D-82CA-4A2B-B39C-21F48E6309E0',
+    'mid': 'Z_-yPwABAAGrQkPVuZUxYwTPbtND',
+    'rur': '"PRN\\0544815764655\\0541776346914:01f70c1c6b15d54b0fa9377fa5465397bb70f7045f7415af439dbb8586e431fced2c06fb"',
 }
 
-INSTAGRAM_API_URL = "https://i.instagram.com/api/v1/direct_v2/threads/"
+# Message to send
+reply_message = "@sender Oii massage maat kar warga nobi aa jaega"
 
-# Define message format
-def send_reply(message, user_id, group_id):
-    url = f"{INSTAGRAM_API_URL}{group_id}/items/"
-    data = {
-        "user_ids": [user_id],
-        "text": message
-    }
-    headers = {
-        "User-Agent": "Instagram 123.0.0.26.121 (Windows; U; Windows NT 10.0; en-US; rv:123.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
-        "Content-Type": "application/json"
-    }
+# Instagram API base URL
+base_url = 'https://i.instagram.com/api/v1/'
 
-    try:
-        # Make the request to send the message
-        response = requests.post(url, json=data, headers=headers, cookies=cookies)
-        
-        # Check the status code
-        if response.status_code == 200:
-            print(f"Message sent to {user_id} in group {group_id}")
-        else:
-            print(f"Failed to send message to {user_id} in group {group_id}, Status code: {response.status_code}")
-            print("Response content:", response.text)  # Print response body for more details
-            
-    except Exception as e:
-        print(f"Error occurred while sending message to {user_id} in group {group_id}: {str(e)}")
-
-# Function to check if the bot has been kicked out
-def check_if_kicked(group_id):
-    url = f"{INSTAGRAM_API_URL}{group_id}/info/"
+# Fetch the list of group chats
+def get_active_groups(cookies):
+    url = f"{base_url}direct_v2/inbox/"
     response = requests.get(url, cookies=cookies)
     
     if response.status_code == 200:
-        group_info = response.json()
-        if 'participants' in group_info:
-            participants = group_info['participants']
-            if 'user_id' in participants and participants['user_id'] != cookies['ds_user_id']:
-                return True
-    return False
+        data = response.json()
+        active_groups = []
+        for thread in data['inbox']['threads']:
+            if 'thread_id' in thread and thread['is_group'] and thread['users']:
+                # Only consider groups where bot is a member
+                active_groups.append(thread['thread_id'])
+        return active_groups
+    else:
+        print("Failed to fetch active groups.")
+        return []
 
-# Function to reply to all group chats with a delay
-def reply_to_all_groups():
-    group_ids = ["abcd1234", "efgh5678"]  # Example group IDs
-    user_ids = ["1234567890", "0987654321"]  # Example user IDs
-    reply_message = "@sender Oii massage maat kar warga nobi aa jaega"
+# Send message to the group
+def send_reply_to_group(thread_id, message, cookies):
+    url = f"{base_url}direct_v2/threads/{thread_id}/broadcast/"
+    data = {
+        'message': message
+    }
+    response = requests.post(url, cookies=cookies, data=data)
     
-    for group_id in group_ids:
-        # Check if bot has been kicked
-        if check_if_kicked(group_id):
-            print(f"Bot has been kicked from group {group_id}, skipping...")
-            continue
-        
-        for user_id in user_ids:
-            send_reply(reply_message, user_id, group_id)
-            time.sleep(3)  # Delay between replies
+    if response.status_code == 200:
+        print(f"Replied to group {thread_id} successfully.")
+    else:
+        print(f"Failed to send message to group {thread_id}, Status code: {response.status_code}")
+
+# Main execution
+def main():
+    active_groups = get_active_groups(cookies)
+    
+    if not active_groups:
+        print("No active groups to reply to.")
+        return
+    
+    # Loop through active groups and send a message
+    for group_id in active_groups:
+        send_reply_to_group(group_id, reply_message, cookies)
+        time.sleep(3)  # Add a delay to stay under radar (rate-limiting)
 
 if __name__ == "__main__":
-    reply_to_all_groups()
+    main()
