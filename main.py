@@ -22,16 +22,18 @@ def get_active_groups(cookies):
     url = f"{base_url}direct_v2/inbox/"
     response = requests.get(url, cookies=cookies)
     
+    print(f"Fetching active groups... Status code: {response.status_code}")  # Debugging output
+    
     if response.status_code == 200:
         data = response.json()
         active_groups = []
-        for thread in data['inbox']['threads']:
+        for thread in data.get('inbox', {}).get('threads', []):
             if 'thread_id' in thread and thread['is_group'] and thread['users']:
                 # Only consider groups where bot is a member
                 active_groups.append(thread['thread_id'])
         return active_groups
     else:
-        print("Failed to fetch active groups.")
+        print(f"Failed to fetch active groups. Response: {response.text}")  # Debugging output
         return []
 
 # Send message to the group
