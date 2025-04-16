@@ -1,43 +1,23 @@
 import requests
-import time
 import json
+import time
 
-# Your Instagram cookies (make sure you replace it with the cookies you extracted)
-COOKIES_JSON = '''[
-    {
-        "name": "sessionid",
-        "value": "4815764655%3AKIze6plmPWbhIc%3A5%3AAYeKoHWOIAtE_3qGgiW1mHJ1qXJBVTma2g5HbUr3Cw",
-        "domain": ".instagram.com",
-        "secure": true,
-        "httpOnly": true,
-        "sameSite": "no_restriction",
-        "session": false
-    },
-    {
-        "name": "csrftoken",
-        "value": "CnUT88Fi2a1yAzOp1ACYqMKj6gRfs6Lf",
-        "domain": ".instagram.com",
-        "secure": true,
-        "httpOnly": false,
-        "sameSite": "no_restriction",
-        "session": false
-    }
-]'''
+# Define your cookies and API URL
+cookies = {
+    "sessionid": "4815764655%3AKIze6plmPWbhIc%3A5%3AAYeKoHWOIAtE_3qGgiW1mHJ1qXJBVTma2g5HbUr3Cw",
+    "ds_user_id": "4815764655",
+    "csrftoken": "CnUT88Fi2a1yAzOp1ACYqMKj6gRfs6Lf",
+    "ig_did": "01ECD94D-82CA-4A2B-B39C-21F48E6309E0",
+    "mid": "Z_-yPwABAAGrQkPVuZUxYwTPbtND",
+    "rur": "\"PRN\\0544815764655\\0541776346914:01f70c1c6b15d54b0fa9377fa5465397bb70f7045f7415af439dbb8586e431fced2c06fb\"",
+    # Add all other relevant cookies
+}
 
-# Convert cookies string to a Python dictionary
-cookie_list = json.loads(COOKIES_JSON)
-cookies = {cookie['name']: cookie['value'] for cookie in cookie_list}
+INSTAGRAM_API_URL = "https://i.instagram.com/api/v1/direct_v2/threads/"
 
-# Instagram API base URL for sending messages
-INSTAGRAM_API_URL = 'https://i.instagram.com/api/v1/'
-
-# Message and Delay
-reply_message = "@sender Oii massage maat kar warga nobi aa jaega"
-delay_between_replies = 3  # seconds
-
-# Helper function to send reply
+# Define message format
 def send_reply(message, user_id, group_id):
-    url = f"{INSTAGRAM_API_URL}direct_v2/threads/{group_id}/items/"
+    url = f"{INSTAGRAM_API_URL}{group_id}/items/"
     data = {
         "user_ids": [user_id],
         "text": message
@@ -47,32 +27,48 @@ def send_reply(message, user_id, group_id):
         "Content-Type": "application/json"
     }
 
-    response = requests.post(url, json=data, headers=headers, cookies=cookies)
+    try:
+        # Make the request to send the message
+        response = requests.post(url, json=data, headers=headers, cookies=cookies)
+        
+        # Check the status code
+        if response.status_code == 200:
+            print(f"Message sent to {user_id} in group {group_id}")
+        else:
+            print(f"Failed to send message to {user_id} in group {group_id}, Status code: {response.status_code}")
+            print("Response content:", response.text)  # Print response body for more details
+            
+    except Exception as e:
+        print(f"Error occurred while sending message to {user_id} in group {group_id}: {str(e)}")
+
+# Function to check if the bot has been kicked out
+def check_if_kicked(group_id):
+    url = f"{INSTAGRAM_API_URL}{group_id}/info/"
+    response = requests.get(url, cookies=cookies)
+    
     if response.status_code == 200:
-        print(f"Message sent to {user_id} in group {group_id}")
-    else:
-        print(f"Failed to send message to {user_id} in group {group_id}, Status code: {response.status_code}")
+        group_info = response.json()
+        if 'participants' in group_info:
+            participants = group_info['participants']
+            if 'user_id' in participants and participants['user_id'] != cookies['ds_user_id']:
+                return True
+    return False
 
-# Function to get active group chats (this needs to be implemented correctly for your use)
-def get_active_group_chats():
-    # You need a method to get the active group chats
-    # Example: Return a list of dictionaries with group_id and user_id for each active group
-    return [
-        {'user_id': '1234567890', 'group_id': 'abcd1234'},
-        {'user_id': '0987654321', 'group_id': 'efgh5678'}
-    ]
+# Function to reply to all group chats with a delay
+def reply_to_all_groups():
+    group_ids = ["abcd1234", "efgh5678"]  # Example group IDs
+    user_ids = ["1234567890", "0987654321"]  # Example user IDs
+    reply_message = "@sender Oii massage maat kar warga nobi aa jaega"
+    
+    for group_id in group_ids:
+        # Check if bot has been kicked
+        if check_if_kicked(group_id):
+            print(f"Bot has been kicked from group {group_id}, skipping...")
+            continue
+        
+        for user_id in user_ids:
+            send_reply(reply_message, user_id, group_id)
+            time.sleep(3)  # Delay between replies
 
-# Main function to reply to all groups
-def reply_to_group_chats():
-    active_groups = get_active_group_chats()  # Get active groups dynamically
-
-    for group in active_groups:
-        user_id = group['user_id']
-        group_id = group['group_id']
-        message_to_send = reply_message.replace("@sender", user_id)
-        send_reply(message_to_send, user_id, group_id)
-        time.sleep(delay_between_replies)
-
-# Run the bot
 if __name__ == "__main__":
-    reply_to_group_chats()
+    reply_to_all_groups()
