@@ -1,95 +1,97 @@
-import time
+import os
+import json
 import random
+import time
+from datetime import datetime, timedelta, timezone
 from instagrapi import Client
-from instagrapi.exceptions import LoginRequired
-from instagrapi.types import DirectMessage
 
-USERNAME = "nobi.bot"
-PASSWORD = "nobihuyaar@11"
+# Set environment-based login
+USERNAME = os.environ.get("IG_USERNAME")
+PASSWORD = os.environ.get("IG_PASSWORD")
 
-ROAST_MESSAGES = [
-    "bol Samay or karan ki mkb.",
-    "Samay or karan ki mkb me nobi.",
+# File paths (Railway-safe)
+SESSION_FILE = "/tmp/session.json"
+REPLY_TRACK_FILE = "/tmp/replied_messages.json"
+STOP_FILE = "/tmp/stopped_threads.json"
+
+# Message bank
+REPLY_MESSAGES = [
+    "bhai tu rehne de, tera IQ room temperature se bhi kam hai.",
+    "jitni baar tu bolta hai, utni baar embarrassment hoti hai Indian education system ko.",
     "tera logic dekh ke calculator bhi suicide kar le.",
-    "chal Samay or karan, tujhme aur Google translate me zyada fark nahi.",
-    "Samay or karan chup kar, warna tera browser history sabke saamne daal dunga.",
-    "Samay or karan reply padke lagta hai ki evolution ne break le liya tha.",
-    "Samay or karan soch ka GPS signal lost dikha raha hai.",
-    "Samay or karan rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
-    "Samay or karan zyada bolta hai, aur samajh kamta hai.",
-    "Samay or karan abasi abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh.",
-    # Add more if you want
+    "chal na, tujhme aur Google translate me zyada fark nahi.",
+    "tu chup kar, warna tera browser history sabke saamne daal dunga.",
+    "tera reply padke lagta hai ki evolution ne break le liya tha.",
+    "teri soch ka GPS signal lost dikha raha hai.",
+    "tu rehne de bhai, tere jaise logon ko autocorrect bhi ignore karta hai.",
+    "tu zyada bolta hai, aur samajh kamta hai.",
+    "beta tu abhi training wheels pe chal raha hai, formula 1 ke sapne mat dekh."
 ]
 
-def safe_login():
-    cl = Client()
-    cl.delay_range = [2, 4]
-    try:
-        cl.login(USERNAME, PASSWORD)
-        cl.get_timeline_feed()  # confirms login is good
-        print(f"[LOGIN SUCCESS] Logged in as {USERNAME}")
-        return cl
-    except Exception as e:
-        print(f"[LOGIN FAILED] {e}")
-        return None
+# Initialize client
+cl = Client()
 
-def get_recent_threads(cl):
-    try:
-        threads = cl.direct_threads()
-        if not threads:
-            raise ValueError("No threads returned.")
-        return threads
-    except LoginRequired:
-        print("[SESSION EXPIRED] Trying relogin...")
+# Load replied message IDs
+try:
+    with open(REPLY_TRACK_FILE, "r") as f:
+        replied_messages = json.load(f)
+except:
+    replied_messages = {}
+
+# Load stopped threads
+try:
+    with open(STOP_FILE, "r") as f:
+        stopped_threads = json.load(f)
+except:
+    stopped_threads = []
+
+def save_replied_messages():
+    with open(REPLY_TRACK_FILE, "w") as f:
+        json.dump(replied_messages, f)
+
+def save_stopped_threads():
+    with open(STOP_FILE, "w") as f:
+        json.dump(stopped_threads, f)
+
+def login():
+    if os.path.exists(SESSION_FILE):
         try:
-            cl.relogin()
-        except Exception as e:
-            print(f"[RELOGIN FAILED] {e}")
-            return []
-        return cl.direct_threads()
-    except Exception as e:
-        print(f"[ERROR getting threads] {e}")
-        return []
+            cl.load_settings(SESSION_FILE)
+            cl.login(USERNAME, PASSWORD)
+            cl.dump_settings(SESSION_FILE)
+            return
+        except:
+            pass
+    cl.login(USERNAME, PASSWORD)
+    cl.dump_settings(SESSION_FILE)
 
-def reply_to_group_messages(cl):
-    print("[BOT ACTIVE] Safe mode running...")
-    my_user_id = cl.user_id
-
+def auto_reply_all_groups():
     while True:
-        threads = get_recent_threads(cl)
-        if not threads:
-            print("[DEBUG] No threads fetched. Sleeping...")
-            time.sleep(2)
-            continue
+        try:
+            threads = cl.direct_threads(amount=20)
+            for thread in threads:
+                if not thread.users or thread.thread_id in stopped_threads:
+                    continue
+                messages = cl.direct_messages(thread.id, amount=10)
+                for message in messages[::-1]:
+                    # Skip if too old
+                    if datetime.now(timezone.utc) - message.timestamp > timedelta(seconds=60):
+                        continue
+                    if message.id in replied_messages.get(thread.id, []):
+                        continue
+                    if message.user_id == cl.user_id:
+                        continue
 
-        for thread in threads:
-            if not thread.is_group:
-                continue
+                    text = random.choice(REPLY_MESSAGES)
+                    cl.direct_send(text, [thread.id], reply_to_message_id=message.id)
+                    print(f"[+] Replied in thread {thread.id} to {message.user_id}")
+                    replied_messages.setdefault(thread.id, []).append(message.id)
+                    save_replied_messages()
+                    time.sleep(3)
+        except Exception as e:
+            print(f"[!] Error: {e}. Retrying in 15s...")
+            time.sleep(15)
 
-            try:
-                updated_thread = cl.direct_thread(thread.id)
-                last_msg: DirectMessage = updated_thread.messages[0]
-
-                if last_msg.user_id == my_user_id:
-                    continue  # prevent self-reply
-
-                user_info = cl.user_info(last_msg.user_id)
-                roast = random.choice(ROAST_MESSAGES)
-                reply = f"@{user_info.username} {roast}"
-
-                cl.direct_send(text=reply, thread_ids=[thread.id])
-                print(f"[REPLIED] To @{user_info.username}: {roast}")
-            except Exception as e:
-                print(f"[ERROR sending reply] {e}")
-
-        time.sleep(2)  # Safe delay between checks
-
-def main():
-    cl = safe_login()
-    if cl:
-        reply_to_group_messages(cl)
-    else:
-        print("[FATAL] Could not login. Exiting.")
-
-if __name__ == "__main__":
-    main()
+# Login and run
+login()
+auto_reply_all_groups()
