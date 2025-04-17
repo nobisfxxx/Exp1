@@ -1,61 +1,81 @@
 import os
 import time
+import json
 from datetime import datetime, timedelta, timezone
 from instagrapi import Client
 from instagrapi.types import DirectMessage
-import json
 
-# Environment variables
+# ENV variables
 username = os.getenv("IG_USERNAME")
 password = os.getenv("IG_PASSWORD")
 reply_text = os.getenv("REPLY_TEXT", "You're built like a toaster, bro.")
 interval = int(os.getenv("CHECK_INTERVAL", 5))
-session_file = "session.json"  # Path to store the session data
 
-# Initialize the Instagram client
+# Files
+session_file = "session.json"
+last_login_file = "last_login.txt"
+
 cl = Client()
 
-# Function to login once a day using session
-def login_once_a_day():
+def has_logged_in_today():
+    if os.path.exists(last_login_file):
+        with open(last_login_file, "r") as f:
+            try:
+                last = datetime.fromisoformat(f.read().strip())
+                return datetime.now() - last < timedelta(hours=24)
+            except:
+                return False
+    return False
+
+def update_login_time():
+    with open(last_login_file, "w") as f:
+        f.write(datetime.now().isoformat())
+
+def login_safely():
     if os.path.exists(session_file):
         try:
-            cl.load_settings(session_file)
-            if cl.is_logged_in:
-                print("[+] Logged in using session.")
-                return
-        except json.JSONDecodeError:
-            print("[!] Session file is empty or corrupted. Logging in again and creating a new session.")
-            os.remove(session_file)  # Remove corrupted session file
+            with open(session_file, "r") as f:
+                settings = json.load(f)
+            cl.set_settings(settings)
+            cl.get_timeline_feed()
+            print("[+] Logged in using session.")
+            return
+        except Exception as e:
+            print("[!] Session invalid, removing it:", e)
+            os.remove(session_file)
 
-    # Login if session is not available or expired
-    cl.login(username, password)
-    print("[+] Logged in.")
+    if has_logged_in_today():
+        print("[!] Already logged in once today. Skipping login to avoid being flagged.")
+        exit(1)
 
-    # Save session to the session file for future use
-    cl.save_settings(session_file)
-
-# Ensure we login once and load the session
-login_once_a_day()
+    try:
+        cl.login(username, password)
+        with open(session_file, "w") as f:
+            json.dump(cl.get_settings(), f)
+        update_login_time()
+        print("[+] Logged in with username/password.")
+    except Exception as e:
+        print("[X] Login failed:", e)
+        exit(1)
 
 def is_recent(msg: DirectMessage) -> bool:
     if not msg.timestamp:
         return False
-    
-    # Ensure the timestamp is timezone-aware
-    if msg.timestamp.tzinfo is None:
-        msg.timestamp = msg.timestamp.replace(tzinfo=timezone.utc)
-
     now = datetime.now(timezone.utc)
-    return (now - msg.timestamp) < timedelta(seconds=60)
+    msg_time = msg.timestamp
+    if msg_time.tzinfo is None:
+        msg_time = msg_time.replace(tzinfo=timezone.utc)
+    return (now - msg_time) < timedelta(seconds=60)
 
 def reply_to_latest_unseen():
     threads = cl.direct_threads()
     for thread in threads:
         if len(thread.users) < 2:
             continue
-        if not thread.items:
+        messages = cl.direct_messages(thread.id, amount=1)
+        if not messages:
             continue
-        last_msg = thread.items[0]
+        last_msg = messages[0]
         if last_msg.user_id == cl.user_id:
             continue
         if not is_recent(last_msg):
@@ -71,7 +91,9 @@ def reply_to_latest_unseen():
         except Exception as e:
             print(f"[!] Error replying in thread {thread.id}: {e}")
 
-# Run the bot
+# Start
+login_safely()
+
 while True:
     reply_to_latest_unseen()
     time.sleep(interval)
