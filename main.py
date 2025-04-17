@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from instagrapi import Client
 from instagrapi.types import DirectMessage
+import json
 
 # Environment variables
 username = os.getenv("IG_USERNAME")
@@ -17,10 +18,14 @@ cl = Client()
 # Function to login once a day using session
 def login_once_a_day():
     if os.path.exists(session_file):
-        cl.load_settings(session_file)
-        if cl.is_logged_in:
-            print("[+] Logged in using session.")
-            return
+        try:
+            cl.load_settings(session_file)
+            if cl.is_logged_in:
+                print("[+] Logged in using session.")
+                return
+        except json.JSONDecodeError:
+            print("[!] Session file is empty or corrupted. Logging in again and creating a new session.")
+            os.remove(session_file)  # Remove corrupted session file
 
     # Login if session is not available or expired
     cl.login(username, password)
