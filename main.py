@@ -16,15 +16,15 @@ cl = Client()
 
 def login_once_a_day():
     """Logs in once a day and saves the session."""
-    if os.path.exists(session_file):
+    if os.path.exists(session_file) and os.path.getsize(session_file) > 0:
         # Try loading session from file
-        cl.load_settings(session_file)
         try:
+            cl.load_settings(session_file)
             cl.login(username, password)
             print("[+] Logged in using session.")
             return
         except Exception as e:
-            print("[!] Session expired or invalid, logging in again:", e)
+            print(f"[!] Error loading session, logging in again: {e}")
 
     # Login using username and password if no valid session exists
     cl.login(username, password)
