@@ -1,75 +1,76 @@
 import os
 import time
 import json
-from datetime import datetime, timedelta, timezone
-from instagrapi import Client
-from instagrapi.types import DirectMessage
+from instapy import InstaPy  # Assuming InstaPy or similar library is used for automation
 
-username = os.getenv("IG_USERNAME")
-password = os.getenv("IG_PASSWORD")
-reply_text = os.getenv("REPLY_TEXT", "You're built like a toaster, bro.")
-interval = int(os.getenv("CHECK_INTERVAL", 5))
-session_file = "session.json"
+# Retrieve session cookies from environment variables (set up in Railway or in a .env file)
+session_id = os.getenv("SESSION_ID")
+ds_user_id = os.getenv("DS_USER_ID")
+csrftoken = os.getenv("CSRFTOKEN")
+mid = os.getenv("MID")
+ig_did = os.getenv("IG_DID")
 
-cl = Client()
-last_keep_alive = time.time()
-
-def login_once_a_day():
-    if os.path.exists(session_file):
-        try:
-            with open(session_file, "r") as f:
-                cl.load_settings(json.load(f))
-            cl.login(username, password)
-            print("[+] Logged in using session.")
-            return
-        except Exception as e:
-            print(f"[!] Failed to load session: {e}")
-
-    cl.login(username, password)
-    with open(session_file, "w") as f:
-        json.dump(cl.get_settings(), f)
-    print("[+] Logged in with username/password.")
-
-def is_recent(msg: DirectMessage) -> bool:
-    if not msg.timestamp:
+# Function to check if the bot is logged in
+def is_logged_in(session):
+    try:
+        session.browser.get("https://www.instagram.com")
+        if session.browser.current_url == "https://www.instagram.com/accounts/login/":
+            return False
+        return True
+    except Exception as e:
+        print(f"Error during login check: {e}")
         return False
-    now = datetime.now(timezone.utc)
-    msg_time = msg.timestamp.replace(tzinfo=timezone.utc) if msg.timestamp.tzinfo is None else msg.timestamp
-    return (now - msg_time) < timedelta(seconds=60)
 
-def reply_to_latest_unseen():
-    threads = cl.direct_threads()
-    for thread in threads:
-        if len(thread.users) < 2 or not thread.items:
-            continue
-        last_msg = thread.items[0]
-        if last_msg.user_id == cl.user_id:
-            continue
-        if not is_recent(last_msg):
-            continue
-        if last_msg.item_type != "text":
-            continue
-        try:
-            user = cl.user_info(last_msg.user_id)
-            mention_text = f"@{user.username} {reply_text}"
-            cl.direct_send(mention_text, thread_ids=[thread.id])
-            print(f"[+] Replied to {user.username} in thread {thread.id}")
-        except Exception as e:
-            print(f"[!] Error replying in thread {thread.id}: {e}")
+# Function to log in using cookies
+def login_with_cookies(session):
+    cookies = [
+        {"name": "sessionid", "value": session_id, "domain": ".instagram.com", "secure": True, "httpOnly": True},
+        {"name": "ds_user_id", "value": ds_user_id, "domain": ".instagram.com", "secure": True, "httpOnly": False},
+        {"name": "csrftoken", "value": csrftoken, "domain": ".instagram.com", "secure": True, "httpOnly": False},
+        {"name": "mid", "value": mid, "domain": ".instagram.com", "secure": True, "httpOnly": False},
+        {"name": "ig_did", "value": ig_did, "domain": ".instagram.com", "secure": True, "httpOnly": True},
+    ]
+    session.set_sess_cookies(cookies)
 
-def keep_alive_ping():
-    global last_keep_alive
-    if time.time() - last_keep_alive > 600:  # every 10 minutes
-        try:
-            cl.get_timeline_feed()  # simple keep-alive call
-            last_keep_alive = time.time()
-            print("[*] Keep-alive ping sent.")
-        except Exception as e:
-            print(f"[!] Keep-alive error: {e}")
+# Initialize InstaPy session
+session = InstaPy(username=None, password=None, headless_browser=True)
 
-login_once_a_day()
+# Log in with cookies
+login_with_cookies(session)
 
+# Check if logged in
+if not is_logged_in(session):
+    print("Login failed, please check cookies.")
+    exit()
+
+# Function to handle replying to the latest message in a group chat
+def reply_to_latest_message(session):
+    try:
+        # Get the latest messages from Instagram DMs
+        messages = session.grab_latest_direct_messages()
+
+        if not messages:
+            print("No messages to reply to.")
+            return
+        
+        latest_message = messages[0]  # Assuming the first message is the latest
+        sender = latest_message['sender']
+        message_content = latest_message['text']
+
+        # Check if the message is recent (e.g., within the last 60 seconds)
+        if time.time() - latest_message['timestamp'] < 60:
+            # Craft a roast reply (for example purposes)
+            reply_message = f"Hey {sender}, you really thought this message would impress me? 😂"
+            print(f"Replying to {sender}: {reply_message}")
+            
+            # Send the reply
+            session.send_message(reply_message, user_id=sender)
+        else:
+            print("No recent messages to reply to.")
+    except Exception as e:
+        print(f"Error while replying: {e}")
+
+# Main loop to keep the bot running
 while True:
-    reply_to_latest_unseen()
-    keep_alive_ping()
-    time.sleep(interval)
+    reply_to_latest_message(session)
+    time.sleep(3)  # Adjust the sleep time to limit how often the bot checks for new messages
