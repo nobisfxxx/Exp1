@@ -1,70 +1,49 @@
-import os
+from instapy import InstaPy
 import time
-import json
-from instapy import InstaPy  # Assuming InstaPy or similar library is used for automation
+import os
 
-# Retrieve session cookies from environment variables (set up in Railway or in a .env file)
+# Environment variables (could be set in Railway for production)
 session_id = os.getenv("SESSION_ID")
-ds_user_id = os.getenv("DS_USER_ID")
-csrftoken = os.getenv("CSRFTOKEN")
-mid = os.getenv("MID")
-ig_did = os.getenv("IG_DID")
-
-# Function to check if the bot is logged in
-def is_logged_in(session):
-    try:
-        session.browser.get("https://www.instagram.com")
-        if session.browser.current_url == "https://www.instagram.com/accounts/login/":
-            return False
-        return True
-    except Exception as e:
-        print(f"Error during login check: {e}")
-        return False
-
-# Function to log in using cookies
-def login_with_cookies(session):
-    cookies = [
-        {"name": "sessionid", "value": session_id, "domain": ".instagram.com", "secure": True, "httpOnly": True},
-        {"name": "ds_user_id", "value": ds_user_id, "domain": ".instagram.com", "secure": True, "httpOnly": False},
-        {"name": "csrftoken", "value": csrftoken, "domain": ".instagram.com", "secure": True, "httpOnly": False},
-        {"name": "mid", "value": mid, "domain": ".instagram.com", "secure": True, "httpOnly": False},
-        {"name": "ig_did", "value": ig_did, "domain": ".instagram.com", "secure": True, "httpOnly": True},
-    ]
-    session.set_sess_cookies(cookies)
+csrf_token = os.getenv("CSRFTOKEN")
+user_id = os.getenv("DS_USER_ID")
 
 # Initialize InstaPy session
-session = InstaPy(username=None, password=None, headless_browser=True)
+session = InstaPy(username=session_id, password='dummy', headless_browser=True)
 
-# Log in with cookies
-login_with_cookies(session)
+# Setting cookies for login
+session.set_session_cookies({
+    'sessionid': session_id,
+    'csrftoken': csrf_token,
+    'ds_user_id': user_id
+})
 
-# Check if logged in
-if not is_logged_in(session):
-    print("Login failed, please check cookies.")
-    exit()
+# Start InstaPy session
+session.login()
 
-# Function to handle replying to the latest message in a group chat
-def reply_to_latest_message(session):
+# Function to handle replying to the latest message in group chats
+def reply_to_latest_message():
     try:
-        # Get the latest messages from Instagram DMs
-        messages = session.grab_latest_direct_messages()
+        # Get the most recent messages from your direct threads
+        threads = session.get_direct_threads()
 
-        if not messages:
-            print("No messages to reply to.")
+        if not threads:
+            print("No threads found.")
             return
-        
-        latest_message = messages[0]  # Assuming the first message is the latest
-        sender = latest_message['sender']
+
+        # Get the most recent message in the first thread
+        latest_message = threads[0]['messages'][0]
+
+        sender = latest_message['user']['username']
         message_content = latest_message['text']
 
-        # Check if the message is recent (e.g., within the last 60 seconds)
+        # Reply only if the message is within the last 60 seconds
         if time.time() - latest_message['timestamp'] < 60:
-            # Craft a roast reply (for example purposes)
-            reply_message = f"Hey {sender}, you really thought this message would impress me? 😂"
+            # Craft the reply (e.g., a roast message)
+            reply_message = f"@{sender} Oii massage maat kar warga nobi aa jaega"
             print(f"Replying to {sender}: {reply_message}")
-            
-            # Send the reply
-            session.send_message(reply_message, user_id=sender)
+
+            # Send the reply to the thread
+            session.send_direct_message([reply_message], threads[0]['thread_id'])
         else:
             print("No recent messages to reply to.")
     except Exception as e:
@@ -72,5 +51,5 @@ def reply_to_latest_message(session):
 
 # Main loop to keep the bot running
 while True:
-    reply_to_latest_message(session)
-    time.sleep(3)  # Adjust the sleep time to limit how often the bot checks for new messages
+    reply_to_latest_message()
+    time.sleep(3)  # Delay between checking for new messages (to avoid spamming)
