@@ -1,3 +1,4 @@
 instapy
 requests
 emoji==1.6.3
+clarifai
