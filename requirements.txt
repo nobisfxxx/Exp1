@@ -1,4 +1,2 @@
-instapy
+flask
 requests
-emoji==1.6.3
-clarifai
