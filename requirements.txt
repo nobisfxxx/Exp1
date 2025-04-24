@@ -3,4 +3,5 @@ gunicorn==20.1.0
 requests
 instapy==0.6.16
 emoji==1.6.3
-clarifai==3.3.0
+clarifai==9.6.0
+
