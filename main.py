@@ -4,7 +4,6 @@ import requests
 
 app = Flask(__name__)
 
-# Environment variables
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
 
@@ -15,31 +14,33 @@ def home():
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
-        # Facebook webhook verification
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
-        
         if mode == "subscribe" and token == VERIFY_TOKEN:
             return challenge, 200
         else:
             return "Verification token mismatch", 403
 
     elif request.method == "POST":
-        # Process incoming messages
         data = request.get_json()
         for entry in data.get("entry", []):
             for messaging_event in entry.get("messaging", []):
                 sender_id = messaging_event["sender"]["id"]
+
+                # Check if it's from a group chat (more than 2 participants)
                 if "message" in messaging_event:
+                    # Get message text
                     message = messaging_event["message"]["text"]
-                    # Craft your custom reply here
-                    reply = f"@{sender_id} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
-                    send_message(sender_id, reply)
+
+                    # If the message is from a group chat, respond
+                    if len(entry.get("messaging", [])) > 2:  # Check if it's a group chat
+                        reply = f"@{sender_id} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+                        send_message(sender_id, reply)
+
         return "EVENT_RECEIVED", 200
 
 def send_message(recipient_id, message):
-    # Send the response to the user via Facebook Messenger API
     url = f"https://graph.facebook.com/v17.0/me/messages?access_token={ACCESS_TOKEN}"
     payload = {
         "messaging_type": "RESPONSE",
@@ -51,5 +52,4 @@ def send_message(recipient_id, message):
     print(response.text)
 
 if __name__ == "__main__":
-    # Ensure it's running on the right port (5000 or 8080 depending on the environment)
     app.run(host="0.0.0.0", port=5000)
