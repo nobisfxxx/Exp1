@@ -1,6 +1,7 @@
 from flask import Flask, request
 import os
 import requests
+import json
 
 app = Flask(__name__)
 
@@ -24,19 +25,20 @@ def webhook():
 
     elif request.method == "POST":
         data = request.get_json()
+        print("Webhook POST received:", json.dumps(data, indent=2))
+
         for entry in data.get("entry", []):
-            for messaging_event in entry.get("messaging", []):
-                sender_id = messaging_event["sender"]["id"]
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                messaging_product = value.get("messaging_product")
+                sender_id = value.get("sender", {}).get("id")
+                message_data = value.get("message", {})
+                message_text = message_data.get("text")
 
-                # Check if it's from a group chat (more than 2 participants)
-                if "message" in messaging_event:
-                    # Get message text
-                    message = messaging_event["message"]["text"]
-
-                    # If the message is from a group chat, respond
-                    if len(entry.get("messaging", [])) > 2:  # Check if it's a group chat
-                        reply = f"@{sender_id} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
-                        send_message(sender_id, reply)
+                if message_text:
+                    # You can add group-check logic here if needed
+                    reply = "Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+                    send_message(sender_id, reply)
 
         return "EVENT_RECEIVED", 200
 
@@ -49,7 +51,7 @@ def send_message(recipient_id, message):
     }
     headers = {"Content-Type": "application/json"}
     response = requests.post(url, json=payload, headers=headers)
-    print(response.text)
+    print("Message sent:", response.text)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
