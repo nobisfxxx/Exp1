@@ -49,6 +49,6 @@ def webhook():
     else:
         return "Ignored", 404
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # Default 5000, change with env
-    app.run(host="0.0.0.0", port=port)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+  # Default 5000, change with env
