@@ -1,35 +1,48 @@
 from flask import Flask, request
 import os
+import requests
 
 app = Flask(__name__)
 
-# Get VERIFY_TOKEN from Railway environment variables
-VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "iamnobi")
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Bot is running!", 200
+    return "Instagram Bot is running!"
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
-        # Verification from Meta
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
-
         if mode == "subscribe" and token == VERIFY_TOKEN:
             return challenge, 200
         else:
-            return "Verification failed", 403
+            return "Verification token mismatch", 403
 
     elif request.method == "POST":
-        # Handle actual incoming messages (optional)
-        data = request.json
-        print("Received webhook:", data)
+        data = request.get_json()
+        for entry in data.get("entry", []):
+            for messaging_event in entry.get("messaging", []):
+                sender_id = messaging_event["sender"]["id"]
+                if "message" in messaging_event:
+                    message = messaging_event["message"]["text"]
+                    reply = f"@sender Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+                    send_message(sender_id, reply)
         return "EVENT_RECEIVED", 200
 
+def send_message(recipient_id, message):
+    url = f"https://graph.facebook.com/v17.0/me/messages?access_token={ACCESS_TOKEN}"
+    payload = {
+        "messaging_type": "RESPONSE",
+        "recipient": {"id": recipient_id},
+        "message": {"text": message}
+    }
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(url, json=payload, headers=headers)
+    print(response.text)
+
 if __name__ == "__main__":
-    from os import environ
-    port = int(environ.get("PORT", 5000))  # Use PORT from Railway or default to 5000
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
