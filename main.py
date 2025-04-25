@@ -98,11 +98,6 @@ def process_groups(cl):
         try:
             logger.info(f"💬 Processing group: {group.id}")
             
-            # Check if the bot is still a participant
-            if cl.user_id not in [user.pk for user in group.users]:
-                logger.info(f"❌ Skipping group {group.id} as bot is no longer a participant")
-                continue  # Skip this group if bot is not a participant
-
             # Get last 5 messages
             messages = cl.direct_messages(thread_id=group.id, amount=5)
             if not messages:
