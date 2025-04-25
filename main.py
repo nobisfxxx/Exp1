@@ -88,7 +88,6 @@ def get_group_chats(cl):
         return []
 
 def process_groups(cl):
-   def process_groups(cl):
     """Process messages in all group chats"""
     groups = get_group_chats(cl)
     if not groups:
@@ -99,6 +98,7 @@ def process_groups(cl):
         try:
             logger.info(f"💬 Processing group: {group.id}")
             
+            # Get last 5 messages
             messages = cl.direct_messages(thread_id=group.id, amount=5)
             if not messages:
                 continue
@@ -107,16 +107,13 @@ def process_groups(cl):
             if last_msg.user_id == cl.user_id:
                 continue  # Skip own messages
                 
-            # === FIXED MESSAGE SENDING ===
+            # Send reply (version-compatible)
             user = cl.user_info(last_msg.user_id)
             reply_text = REPLY_TEMPLATE.format(username=user.username)
-            
-            # New message sending syntax
             cl.direct_send(
                 text=reply_text,
-                thread_ids=[group.id]  # Now accepts list of thread IDs
+                thread_ids=[group.id]  # Critical fix here
             )
-            
             logger.info(f"📩 Replied to @{user.username}")
             time.sleep(2)
             
