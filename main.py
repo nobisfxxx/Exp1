@@ -1,58 +1,47 @@
-import time
-import random
-import logging
 from instagrapi import Client
-from config import DEVICE_SETTINGS, USER_AGENT, SESSION_ID
-from roasts import ROAST_MESSAGES
+import time
 
-cl = Client()
-cl.set_device(DEVICE_SETTINGS)
-cl.set_user_agent(USER_AGENT)
-cl.login_by_sessionid(SESSION_ID)
-
-logging.basicConfig(level=logging.INFO)
-last_replied = {}
-
-def safe_username(user):
-    return user.username or f"id_{user.pk}"
-
-def should_reply(thread_id):
-    now = time.time()
-    if thread_id not in last_replied or (now - last_replied[thread_id]) > 3:
-        last_replied[thread_id] = now
-        return True
-    return False
-
-while True:
+# Login to Instagram
+def login(username, password):
+    cl = Client()
     try:
-        threads = cl.direct_threads()
-        for thread in threads:
-            if not thread.users or not thread.items:
-                continue
-
-            if not thread.thread_title or not thread.is_group:
-                continue  # skip DMs or inactive
-
-            last_item = thread.items[0]
-            if last_item.user_id == cl.user_id:
-                continue  # skip self replies
-
-            timestamp = last_item.timestamp.timestamp()
-            if time.time() - timestamp > 60:
-                continue  # old message
-
-            if not should_reply(thread.id):
-                continue
-
-            roast = random.choice(ROAST_MESSAGES)
-            sender = safe_username(last_item.user)
-            message = f"@{sender} {roast}"
-
-            cl.direct_answer(thread.id, message)
-            logging.info(f"Roasted @{sender} in {thread.thread_title}")
-
-        time.sleep(5)
-
+        cl.login(username, password)
+        print("✅ Login successful!")
+        return cl
     except Exception as e:
-        logging.error(f"Error: {e}")
-        time.sleep(10)
+        print(f"❌ Login failed: {e}")
+        return None
+
+# Auto-reply in group chats
+def auto_reply_in_groups(cl, reply_message):
+    while True:
+        try:
+            # Get active group chats
+            threads = cl.direct_threads()
+            for thread in threads:
+                if len(thread.users) > 1:  # Check if it's a group chat
+                    last_msg = thread.messages[-1]
+                    sender_username = last_msg.user.username
+                    
+                    # Custom reply with mention
+                    custom_reply = f"@{sender_username} {reply_message}"
+                    
+                    # Send reply
+                    cl.direct_send(custom_reply, thread_id=thread.id)
+                    print(f"📩 Replied to @{sender_username} in group chat.")
+                    
+                    time.sleep(2)  # 2-second delay (avoid rate limits)
+        except Exception as e:
+            print(f"⚠ Error: {e}")
+            time.sleep(60)  # Wait 1 min if error occurs
+
+if __name__ == "__main__":
+    # ⚠ Replace with your credentials (use environment variables in Railway!)
+    USERNAME = "your_instagram_username"
+    PASSWORD = "your_instagram_password"
+    REPLY_MSG = "Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+
+    # Start the bot
+    client = login(USERNAME, PASSWORD)
+    if client:
+        auto_reply_in_groups(client, REPLY_MSG)
