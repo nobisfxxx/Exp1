@@ -55,19 +55,15 @@ def login_client():
     try:
         cl.load_settings(SESSION_FILE)
         cl.login(USERNAME, PASSWORD)
-        
-        # Verify session activity
-        cl.get_timeline_feed()
+        cl.get_timeline_feed()  # Verify session
         logger.info("✅ Login successful")
         return cl
     except (LoginRequired, AttributeError):
         logger.warning("Session expired - fresh login")
         return fresh_login()
-    except ChallengeRequired:
-        logger.error("🔐 Complete verification in Instagram app!")
     except Exception as e:
         logger.error(f"Login failed: {str(e)}")
-    return None
+        return None
 
 def fresh_login():
     """Force new login and session creation"""
@@ -80,111 +76,66 @@ def fresh_login():
         logger.error(f"Fresh login failed: {str(e)}")
         return None
 
-def debug_group_info(cl):
-    """Log detailed group chat information"""
+def get_group_chats(cl):
+    """Get group chats by checking participant count"""
     try:
-        groups = cl.direct_threads(thread_types=["group"])
+        all_threads = cl.direct_threads()
+        groups = [t for t in all_threads if len(t.users) > 1]
         logger.info(f"📦 Found {len(groups)} group chats")
-        
-        for idx, group in enumerate(groups):
-            logger.info(f"""
-            === GROUP {idx+1} ===
-            ID: {group.id}
-            Title: {group.title}
-            Users: {[u.username for u in group.users]}
-            Last Activity: {datetime.fromtimestamp(group.last_activity//1000)}
-            Message Count: {len(group.messages)}
-            ======================
-            """)
-            
-            # Test message sending capability
-            try:
-                cl.direct_send("🔧 Bot debug message", thread_id=group.id)
-                logger.info("✅ Successfully sent test message")
-            except Exception as e:
-                logger.error(f"❌ Failed to send test message: {str(e)}")
-                
         return groups
     except Exception as e:
-        logger.error(f"Group debug failed: {str(e)}")
+        logger.error(f"Failed to get groups: {str(e)}")
         return []
 
 def process_groups(cl):
-    """Main group processing logic with detailed logging"""
-    logger.info("🔍 Starting group scan")
-    
-    groups = debug_group_info(cl)
+    """Process messages in all group chats"""
+    groups = get_group_chats(cl)
     if not groups:
-        logger.warning("No groups found! Ensure account is added to groups")
+        logger.warning("No groups found! Check if account is added to groups")
         return
 
     for group in groups:
         try:
-            logger.info(f"🔄 Processing group: {group.id}")
+            logger.info(f"💬 Processing group: {group.id}")
             
+            # Get last 5 messages
             messages = cl.direct_messages(thread_id=group.id, amount=5)
-            logger.info(f"📩 Found {len(messages)} messages in group")
-            
             if not messages:
-                logger.info("💤 No messages to process")
                 continue
                 
             last_msg = messages[-1]
-            logger.info(f"""
-            ⚡ LAST MESSAGE DETAILS
-            ID: {last_msg.id}
-            From: {last_msg.user_id}
-            Text: {last_msg.text[:50]}...
-            Timestamp: {datetime.fromtimestamp(last_msg.timestamp//1000)}
-            """)
-            
             if last_msg.user_id == cl.user_id:
-                logger.info("🤖 Skipping own message")
-                continue
+                continue  # Skip own messages
                 
+            # Send reply
             user = cl.user_info(last_msg.user_id)
             reply_text = REPLY_TEMPLATE.format(username=user.username)
-            
-            logger.info(f"✉️ Attempting reply to @{user.username}")
             cl.direct_send(reply_text, thread_id=group.id)
-            logger.info("✅ Reply sent successfully")
+            logger.info(f"📩 Replied to @{user.username}")
             time.sleep(2)
             
         except Exception as e:
-            logger.error(f"Group processing error: {str(e)}")
+            logger.error(f"Group error: {str(e)}")
             time.sleep(5)
 
 # ===== MAIN EXECUTION =====
 if __name__ == "__main__":
-    logger.info("🚀 Initializing bot")
+    logger.info("🚀 Starting bot")
     
+    # Login with retries
     client = None
-    for attempt in range(3):
+    for _ in range(3):
         client = login_client()
         if client:
             break
-        logger.warning(f"Retrying login ({attempt+1}/3)")
         time.sleep(10)
     
     if not client:
         logger.error("❌ Permanent login failure")
         exit(1)
         
-    # Verify account status
-    try:
-        user_info = client.user_info(client.user_id)
-        logger.info(f"""
-        🔑 ACCOUNT STATUS
-        Username: {user_info.username}
-        Followers: {user_info.follower_count}
-        Following: {user_info.following_count}
-        Private: {user_info.is_private}
-        """)
-    except Exception as e:
-        logger.error(f"Account check failed: {str(e)}")
-    
     # Main loop
     while True:
         process_groups(client)
-        logger.info("⏳ Next check in 30 seconds...")
+        logger.info("🔄 Next check in 30 seconds...")
         time.sleep(30)
