@@ -4,9 +4,9 @@ import json
 import time
 import logging
 import sys
-from datetime import datetime
+import random
 
-# ===== ENHANCED CONFIGURATION =====
+# ===== CONFIGURATION =====
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -17,150 +17,178 @@ logger = logging.getLogger(__name__)
 USERNAME = os.getenv("INSTA_USERNAME")
 PASSWORD = os.getenv("INSTA_PASSWORD")
 SESSION_FILE = "/app/session.json"
-REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+REPLY_MSG = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+PROXY = os.getenv("INSTA_PROXY")  # Optional: http://user:pass@host:port
 
-class RobustInstagramBot:
-    def __init__(self):
-        self.client = Client()
-        self.client.delay_range = [3, 7]
-        self.client.set_user_agent("Instagram 219.0.0.12.117 Android")
-        self._configure_device()
-        
-    def _configure_device(self):
-        """Device fingerprint hardening"""
-        self.client.set_device({
-            "app_version": "219.0.0.12.117",
-            "android_version": 25,
-            "android_release": "7.1.2",
+# ===== NUCLEAR SESSION HANDLER =====
+class SessionWeapon:
+    @staticmethod
+    def create_warhead():
+        """Generate new device fingerprint"""
+        return {
+            "app_version": "250.0.0.16.117",
+            "android_version": random.randint(25, 30),
+            "android_release": f"{random.randint(9, 13)}.0.0",
             "dpi": "480dpi",
             "resolution": "1080x1920",
-            "manufacturer": "Xiaomi",
-            "device": "mi 6",
-            "phone_id": self.client.generate_uuid(),
-            "uuid": self.client.generate_uuid(),
-        })
-        
-    def login(self):
-        """Smart login with session recovery"""
-        try:
-            if os.path.exists(SESSION_FILE):
-                self.client.load_settings(SESSION_FILE)
-                if self._verify_session():
-                    return True
-            return self._fresh_login()
-        except Exception as e:
-            logger.error(f"Login failed: {str(e)}")
-            return False
-            
-    def _verify_session(self):
-        """Verify session validity"""
-        try:
-            self.client.get_timeline_feed()
-            return True
-        except (LoginRequired, AttributeError):
-            return False
-            
-    def _fresh_login(self):
-        """Perform new login with challenge handling"""
-        try:
-            self.client.login(USERNAME, PASSWORD)
-            self.client.dump_settings(SESSION_FILE)
-            logger.info("✅ Fresh login successful")
-            return True
-        except ChallengeRequired:
-            logger.error("🔐 Complete verification in Instagram app!")
-            return False
-        except Exception as e:
-            logger.error(f"Fresh login failed: {str(e)}")
-            return False
-            
-    def get_active_groups(self):
-        """Fetch groups with robust error handling"""
-        try:
-            # Force API refresh with timeout
-            threads = self.client.direct_threads(force_refresh=True, timeout=10)
-            
-            if not isinstance(threads, list):
-                logger.error("Invalid threads response - possible shadowban")
-                return []
+            "manufacturer": random.choice(["Google", "Xiaomi", "Samsung"]),
+            "device": random.choice(["Pixel 7 Pro", "Mi 11", "Galaxy S23"]),
+            "phone_id": Client().generate_uuid(),
+            "uuid": Client().generate_uuid(),
+        }
+
+    @classmethod
+    def nuke_session(cls):
+        """Complete session reset"""
+        session_data = {
+            "cookies": [],
+            "device_settings": cls.create_warhead(),
+            "user_agent": "Instagram 250.0.0.16.117 Android",
+            "last_login": int(time.time())
+        }
+        with open(SESSION_FILE, 'w') as f:
+            json.dump(session_data, f)
+        logger.info("Nuclear session detonation complete")
+
+# ===== WARRIOR LOGIN SYSTEM =====
+class LoginCommander:
+    def __init__(self):
+        self.cl = Client()
+        self.attempt = 0
+        self.max_attempts = 5
+
+    def conquer_login(self):
+        """Military-grade login sequence"""
+        while self.attempt < self.max_attempts:
+            try:
+                SessionWeapon.nuke_session()
+                self.cl.load_settings(SESSION_FILE)
                 
-            return [t for t in threads if self._valid_group(t)]
+                if PROXY:
+                    self.cl.set_proxy(PROXY)
+                    logger.info(f"Activated proxy: {PROXY.split('@')[-1]}")
+                
+                self._rotate_fingerprint()
+                logger.info(f"Assault attempt {self.attempt+1}/{self.max_attempts}")
+                
+                if self.cl.login(USERNAME, PASSWORD):
+                    self._validate_conquest()
+                    return True
+                    
+            except ChallengeRequired:
+                logger.error("MANUAL VERIFICATION REQUIRED! Check Instagram app")
+                sys.exit(1)
+            except Exception as e:
+                logger.error(f"Assault failed: {str(e)}")
+                self.attempt += 1
+                time.sleep(self.attempt * 15)
+                
+        logger.critical("Login fortress impenetrable - Mission aborted")
+        sys.exit(1)
+
+    def _rotate_fingerprint(self):
+        """Change device fingerprint"""
+        new_device = SessionWeapon.create_warhead()
+        self.cl.set_device(new_device)
+        logger.info(f"New fingerprint: {new_device['device']}")
+
+    def _validate_conquest(self):
+        """Verify login success"""
+        try:
+            self.cl.get_timeline_feed()
+            self.cl.dump_settings(SESSION_FILE)
+            logger.info("Territory secured - Login validated")
         except Exception as e:
-            logger.error(f"Group fetch failed: {str(e)}")
+            logger.error(f"Validation failed: {str(e)}")
+            raise
+
+# ===== GROUP TROOPER =====
+class GroupBattalion:
+    def __init__(self, client):
+        self.cl = client
+        self.replied_ids = set()
+
+    def recon_groups(self):
+        """Advanced group reconnaissance"""
+        try:
+            threads = self.cl.direct_threads(force_refresh=True)
+            return [t for t in threads if self._is_hostile_territory(t)]
+        except Exception as e:
+            logger.error(f"Recon failed: {str(e)}")
             return []
-            
-    def _valid_group(self, thread):
-        """Validate group structure"""
+
+    def _is_hostile_territory(self, thread):
+        """Identify valid groups"""
         try:
             return (
-                thread is not None and
-                hasattr(thread, 'users') and
-                len(thread.users) > 1 and
-                self.client.user_id in [u.pk for u in thread.users]
+                thread and
+                len(getattr(thread, 'users', [])) > 1 and
+                self.cl.user_id in [u.pk for u in thread.users]
             )
         except Exception as e:
-            logger.warning(f"Group validation error: {str(e)}")
+            logger.error(f"Target analysis failed: {str(e)}")
             return False
-            
-    def process_groups(self):
-        """Process groups with enhanced safety"""
-        groups = self.get_active_groups()
-        logger.info(f"📊 Valid groups: {len(groups)}")
-        
-        for group in groups:
-            try:
-                # Verify group access
-                if not self.client.direct_thread(group.id):
-                    logger.warning(f"Lost access to group {group.id[:6]}...")
-                    continue
-                    
-                self._process_group_messages(group)
-                
-            except Exception as e:
-                logger.error(f"Group {group.id[:6]}... failed: {str(e)}")
-                self.client.direct_threads(force_refresh=True)
-                
-    def _process_group_messages(self, group):
-        """Handle message processing"""
-        messages = self.client.direct_messages(thread_id=group.id, amount=1)
-        if not messages:
-            return
-            
-        last_msg = messages[-1]
-        if last_msg.user_id == self.client.user_id:
-            return
-            
-        user = self.client.user_info(last_msg.user_id)
-        self.client.direct_send(
-            REPLY_TEMPLATE.format(username=user.username),
-            thread_ids=[group.id]
-        )
-        logger.info(f"📩 Replied to @{user.username}")
-        time.sleep(3)
 
-# ===== MAIN EXECUTION =====
-def main():
-    bot = RobustInstagramBot()
+    def engage_target(self, group):
+        """Execute message strike"""
+        try:
+            messages = self.cl.direct_messages(thread_id=group.id, amount=1)
+            if not messages:
+                return
+
+            last_msg = messages[-1]
+            if last_msg.id in self.replied_ids:
+                return
+
+            user = self.cl.user_info(last_msg.user_id)
+            strike_msg = REPLY_MSG.format(username=user.username)
+            
+            self.cl.direct_send(
+                text=strike_msg,
+                thread_ids=[group.id]
+            )
+            self.replied_ids.add(last_msg.id)
+            logger.info(f"Target engaged: @{user.username}")
+            time.sleep(random.uniform(2, 5))
+
+        except Exception as e:
+            logger.error(f"Strike failed: {str(e)}")
+            if "not in group" in str(e).lower():
+                logger.warning("Evacuating compromised territory")
+                self.cl.direct_threads(force_refresh=True)
+
+# ===== MISSION CONTROL =====
+def main_operation():
+    logger.info("🚀 Initiating Operation Instagram Dominance")
     
-    # Login sequence
-    if not bot.login():
-        logger.error("❌ Permanent login failure")
-        sys.exit(1)
-        
-    logger.info("🤖 Bot operational - Monitoring groups")
+    # Phase 1: Login Conquest
+    commander = LoginCommander()
+    if not commander.conquer_login():
+        return
+    
+    # Phase 2: Group Warfare
+    battalion = GroupBattalion(commander.cl)
+    logger.info("🔥 Combat systems engaged - Scanning battlefields")
+    
     while True:
         try:
-            bot.process_groups()
-            sleep_time = 60  # More conservative delay
-            logger.info(f"💤 Sleeping for {sleep_time} seconds")
-            time.sleep(sleep_time)
+            groups = battalion.recon_groups()
+            logger.info(f"🎯 Targets acquired: {len(groups)}")
+            
+            for group in groups:
+                battalion.engage_target(group)
+                
+            # Strategic retreat interval
+            sleep_duration = random.randint(45, 120)
+            logger.info(f"🛌 Tactical pause: {sleep_duration}s")
+            time.sleep(sleep_duration)
             
         except KeyboardInterrupt:
-            logger.info("🛑 Manual shutdown")
+            logger.info("🕊️ Peace treaty signed - Shutting down")
             break
         except Exception as e:
-            logger.error(f"Critical error: {str(e)}")
-            time.sleep(30)
+            logger.error(f"Battlefield chaos: {str(e)}")
+            time.sleep(60)
 
 if __name__ == "__main__":
-    main()
+    main_operation()
