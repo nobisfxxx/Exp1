@@ -1,89 +1,134 @@
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired, ChallengeRequired
 import os
-import json
 import time
 import random
+import logging
 from datetime import datetime
 
-# ===== CONFIGURATION =====
+# ===== SETUP =====
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler('bot_debug.log'), logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
+
 USERNAME = os.getenv("INSTA_USERNAME")
 PASSWORD = os.getenv("INSTA_PASSWORD")
-SESSION_FILE = "session.json"
+SESSION_FILE = "/app/session.json"
 REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
 
-# ===== SESSION VALIDATOR =====
-def validate_session_structure(session_data):
-    required_keys = ['cookies', 'last_login', 'device_settings', 'user_agent']
-    return all(key in session_data for key in required_keys)
+# ===== BOT CLASS =====
+class GroupReplyBot:
+    def __init__(self):
+        self.cl = Client()
+        self.cl.delay_range = [3, 7]
+        self.replied_ids = set()
+        self._configure_client()
 
-def fix_session_file():
-    """Create properly structured session file"""
-    valid_structure = {
-        "cookies": [],
-        "last_login": 0,
-        "device_settings": {
+    def _configure_client(self):
+        """Set realistic device parameters"""
+        self.cl.set_user_agent("Instagram 219.0.0.12.117 Android")
+        self.cl.set_device({
             "app_version": "219.0.0.12.117",
             "android_version": 25,
             "android_release": "7.1.2",
             "dpi": "480dpi",
-            "resolution": "1080x1920",
-            "manufacturer": "OnePlus",
-            "device": "ONEPLUS A6013"
-        },
-        "user_agent": "Instagram 219.0.0.12.117 Android"
-    }
-    with open(SESSION_FILE, 'w') as f:
-        json.dump(valid_structure, f)
+            "resolution": "1080x1920"
+        })
 
-# ===== AUTHENTICATION =====
-def login_client():
-    cl = Client()
-    
-    # 1. Validate/Create session file
-    if not os.path.exists(SESSION_FILE):
-        fix_session_file()
-    else:
+    def login(self):
+        """Handle session/auth with detailed logging"""
         try:
-            with open(SESSION_FILE) as f:
-                data = json.load(f)
-                if not validate_session_structure(data):
-                    print("⚠ Invalid session structure - resetting")
-                    fix_session_file()
-        except json.JSONDecodeError:
-            print("⚠ Corrupted session file - resetting")
-            fix_session_file()
+            if os.path.exists(SESSION_FILE):
+                self.cl.load_settings(SESSION_FILE)
+                logger.info("Loaded existing session")
+            else:
+                logger.warning("No session file found")
 
-    # 2. Attempt login
-    try:
-        cl.load_settings(SESSION_FILE)
-        cl.login(USERNAME, PASSWORD)
-        
-        # Verify session
-        cl.get_timeline_feed()
-        print("✅ Login successful!")
-        return cl
-        
-    except (LoginRequired, AttributeError) as e:
-        print(f"⚠ Session expired: {str(e)} - Trying fresh login")
-        cl = Client()
-        cl.login(USERNAME, PASSWORD)
-        cl.dump_settings(SESSION_FILE)
-        return cl
-        
-    except ChallengeRequired:
-        print("🔐 Complete verification in Instagram app!")
-        return None
+            self.cl.login(USERNAME, PASSWORD)
+            self.cl.dump_settings(SESSION_FILE)
+            logger.info("Login successful")
+            return True
+            
+        except ChallengeRequired:
+            logger.error("Complete verification in Instagram app!")
+            return False
+        except Exception as e:
+            logger.error(f"Login failed: {str(e)}")
+            if os.path.exists(SESSION_FILE):
+                os.remove(SESSION_FILE)
+            return False
 
-# ===== MAIN =====
+    def get_active_groups(self):
+        """Fetch group chats with error handling"""
+        try:
+            groups = self.cl.direct_threads(thread_types=["group"])
+            logger.info(f"Found {len(groups)} groups")
+            return groups
+        except Exception as e:
+            logger.error(f"Failed to fetch groups: {str(e)}")
+            return []
+
+    def process_group(self, group):
+        """Handle messages in a single group"""
+        try:
+            group_id = group.id
+            logger.debug(f"Processing group {group_id}")
+
+            messages = self.cl.direct_messages(group_id)
+            if not messages:
+                logger.debug("No messages in group")
+                return
+
+            last_msg = messages[-1]
+            if last_msg.id in self.replied_ids:
+                return
+
+            if last_msg.user_id == self.cl.user_id:
+                logger.debug("Ignoring own message")
+                return
+
+            user = self.cl.user_info(last_msg.user_id)
+            reply_text = REPLY_TEMPLATE.format(username=user.username)
+            
+            self.cl.direct_send(reply_text, thread_id=group_id)
+            self.replied_ids.add(last_msg.id)
+            
+            logger.info(f"Replied to @{user.username} in group {group_id}")
+            time.sleep(random.randint(2, 5))
+
+        except Exception as e:
+            logger.error(f"Group {group_id} error: {str(e)}")
+
+    def run(self):
+        """Main execution loop"""
+        if not self.login():
+            return
+
+        logger.info("Bot started - Monitoring groups")
+        while True:
+            try:
+                groups = self.get_active_groups()
+                for group in groups:
+                    self.process_group(group)
+                
+                # Reset replied IDs every hour
+                if time.time() % 3600 < 10:
+                    self.replied_ids.clear()
+                    logger.info("Cleared reply history")
+
+                time.sleep(30)  # Check every 30 seconds
+
+            except KeyboardInterrupt:
+                logger.info("Bot stopped manually")
+                break
+            except Exception as e:
+                logger.error(f"Critical error: {str(e)}")
+                time.sleep(60)
+
+# ===== EXECUTION =====
 if __name__ == "__main__":
-    # Attempt login 3 times
-    for _ in range(3):
-        client = login_client()
-        if client:
-            print("🤖 Bot started successfully!")
-            # Add your group reply logic here
-            break
-        time.sleep(30)
-    else:
-        print("❌ Permanent login failure")
+    bot = GroupReplyBot()
+    bot.run()
