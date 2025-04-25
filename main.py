@@ -1,9 +1,10 @@
 from instagrapi import Client
-from instagrapi.exceptions import LoginRequired, ChallengeRequired
+from instagrapi.exceptions import LoginRequired, ChallengeRequired, ClientError
 import os
 import json
 import time
 import logging
+import random
 from datetime import datetime
 
 # ===== CONFIGURATION =====
@@ -14,136 +15,205 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-USERNAME = os.getenv("INSTA_USERNAME")
-PASSWORD = os.getenv("INSTA_PASSWORD")
-SESSION_FILE = "/app/session.json"
-REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+USERNAME = os.getenv("INSTA_USERNAME") or "your_username"
+PASSWORD = os.getenv("INSTA_PASSWORD") or "your_password"
+SESSION_FILE = "session.json"
+REPLY_TEMPLATE = "@{username} Your reply here"
 
-# ===== SESSION MANAGEMENT =====
-def validate_session():
-    """Ensure session file structure is valid"""
-    required_keys = ["cookies", "last_login", "device_settings", "user_agent"]
-    try:
-        with open(SESSION_FILE, 'r') as f:
-            data = json.load(f)
-            if not all(key in data for key in required_keys):
-                raise ValueError("Invalid session structure")
-    except (json.JSONDecodeError, ValueError, FileNotFoundError):
-        logger.warning("Resetting corrupted session file")
-        reset_session_file()
+# Updated as of July 2024
+LATEST_VERSION = "325.0.0.0.0"
+ANDROID_VERSION = 34  # Android 14
+ANDROID_RELEASE = "14.0"
 
-def reset_session_file():
-    """Create fresh valid session structure"""
+# ===== ENHANCED SESSION MANAGEMENT =====
+def create_device_settings():
+    return {
+        "app_version": LATEST_VERSION,
+        "android_version": ANDROID_VERSION,
+        "android_release": ANDROID_RELEASE,
+        "phone_manufacturer": "OnePlus",
+        "phone_device": "ONEPLUS A6013",
+        "phone_model": "ONEPLUS 6T",
+        "cpu": "qcom",
+        "dpi": "420dpi",
+        "resolution": "1080x2280",
+        "device_id": f"android-{random.randint(10**15, 10**16-1)}"
+    }
+
+def create_fresh_session():
+    device = create_device_settings()
     with open(SESSION_FILE, 'w') as f:
         json.dump({
             "cookies": [],
             "last_login": int(time.time()),
-            "device_settings": {
-                "app_version": "219.0.0.12.117",
-                "android_version": 25,
-                "android_release": "7.1.2"
-            },
-            "user_agent": "Instagram 219.0.0.12.117 Android"
+            "device_settings": device,
+            "user_agent": (
+                f"Instagram {LATEST_VERSION} Android "
+                f"({ANDROID_VERSION}/{ANDROID_RELEASE}; "
+                f"{device['phone_manufacturer']}; "
+                f"{device['phone_model']}; {device['cpu']}; "
+                f"en_US; {device['dpi']})"
+            )
         }, f)
 
-# ===== CORE FUNCTIONALITY =====
-def login_client():
-    """Robust login with session recovery"""
-    validate_session()
-    
-    cl = Client()
+# ===== CHALLENGE HANDLER =====
+def handle_challenge(cl, challenge_exception):
+    logger.warning("🔐 Challenge required - solving...")
     try:
-        cl.load_settings(SESSION_FILE)
-        cl.login(USERNAME, PASSWORD)
-        cl.get_timeline_feed()  # Verify session
-        logger.info("✅ Login successful")
-        return cl
-    except (LoginRequired, AttributeError):
-        logger.warning("Session expired - fresh login")
-        return fresh_login()
+        challenge_info = cl.challenge_resolve(challenge_exception)
+        if challenge_info.get('action') == 'submit_email':
+            # Replace with your email if needed
+            cl.challenge_code_handler = lambda _: input("Enter email code: ")
+        elif challenge_info.get('action') == 'submit_phone':
+            cl.challenge_code_handler = lambda _: input("Enter SMS code: ")
+        cl.challenge_resolve(challenge_exception)
+        return True
     except Exception as e:
-        logger.error(f"Login failed: {str(e)}")
-        return None
+        logger.error(f"Failed to solve challenge: {str(e)}")
+        return False
 
-def fresh_login():
-    """Force new login and session creation"""
-    cl = Client()
-    try:
-        cl.login(USERNAME, PASSWORD)
-        cl.dump_settings(SESSION_FILE)
-        return cl
-    except Exception as e:
-        logger.error(f"Fresh login failed: {str(e)}")
-        return None
-
-def get_group_chats(cl):
-    """Get group chats by checking participant count"""
-    try:
-        all_threads = cl.direct_threads()
-        groups = [t for t in all_threads if len(t.users) > 1]
-        logger.info(f"📦 Found {len(groups)} group chats")
-        return groups
-    except Exception as e:
-        logger.error(f"Failed to get groups: {str(e)}")
-        return []
-
-def process_groups(cl):
-    """Process messages in all group chats"""
-    groups = get_group_chats(cl)
-    if not groups:
-        logger.warning("No groups found! Check if account is added to groups")
-        return
-
-    for group in groups:
+# ===== SAFE API WRAPPER =====
+def safe_api_call(cl, func, *args, max_retries=3, **kwargs):
+    for attempt in range(max_retries):
         try:
-            logger.info(f"💬 Processing group: {group.id}")
-            
-            # Check if the bot is still a participant
-            if cl.user_id not in [user.pk for user in group.users]:
-                logger.info(f"❌ Skipping group {group.id} as bot is no longer a participant")
-                continue  # Skip this group if bot is not a participant
-
-            # Get last 5 messages
-            messages = cl.direct_messages(thread_id=group.id, amount=5)
-            if not messages:
-                continue
-                
-            last_msg = messages[-1]
-            if last_msg.user_id == cl.user_id:
-                continue  # Skip own messages
-                
-            # Send reply (version-compatible)
-            user = cl.user_info(last_msg.user_id)
-            reply_text = REPLY_TEMPLATE.format(username=user.username)
-            cl.direct_send(
-                text=reply_text,
-                thread_ids=[group.id]  # Critical fix here
-            )
-            logger.info(f"📩 Replied to @{user.username}")
-            time.sleep(2)
-            
+            result = func(*args, **kwargs)
+            if result is None:
+                raise ValueError("API returned None")
+            return result
+        except ChallengeRequired as e:
+            if not handle_challenge(cl, e):
+                raise
+        except (ClientError, AttributeError) as e:
+            wait = min(2 ** attempt + random.random(), 15)
+            logger.warning(f"Attempt {attempt+1}/{max_retries} failed: {str(e)}")
+            time.sleep(wait)
         except Exception as e:
-            logger.error(f"Group error: {str(e)}")
-            time.sleep(5)
+            logger.error(f"Unexpected error: {str(e)}")
+            raise
+    
+    logger.error(f"Permanent failure calling {func.__name__}")
+    return None
+
+# ===== GROUP CHAT HANDLER =====
+def process_groups(cl):
+    try:
+        # Get groups safely
+        threads = safe_api_call(cl, cl.direct_threads)
+        if not threads:
+            logger.warning("No threads returned")
+            return False
+
+        groups = [t for t in threads if hasattr(t, 'users') and len(t.users) > 1]
+        if not groups:
+            logger.info("No active groups found")
+            return False
+
+        for group in groups:
+            try:
+                # Verify group access
+                group_info = safe_api_call(cl, cl.direct_thread, group.id)
+                if not group_info:
+                    logger.warning(f"Lost access to group {group.id[:4]}...")
+                    continue
+
+                # Get messages safely
+                messages = safe_api_call(cl, cl.direct_messages, 
+                                      thread_id=group.id, amount=3)
+                if not messages:
+                    continue
+
+                # Process last message
+                last_msg = messages[-1]
+                if not hasattr(last_msg, 'user_id') or last_msg.user_id == cl.user_id:
+                    continue
+
+                # Get user safely
+                user = safe_api_call(cl, cl.user_info, last_msg.user_id)
+                if not user:
+                    continue
+
+                # Send reply with delay
+                reply_text = REPLY_TEMPLATE.format(username=user.username)
+                time.sleep(random.uniform(5.0, 10.0))
+                
+                if safe_api_call(cl, cl.direct_send, 
+                               text=reply_text, thread_ids=[group.id]):
+                    logger.info(f"Replied to @{user.username}")
+                else:
+                    logger.warning("Failed to send reply")
+                
+            except Exception as e:
+                logger.error(f"Group error: {str(e)}")
+            
+            time.sleep(random.randint(10, 20))
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Critical error: {str(e)}")
+        return False
 
 # ===== MAIN EXECUTION =====
 if __name__ == "__main__":
-    logger.info("🚀 Starting bot")
+    logger.info("🚀 Starting enhanced Instagram bot")
     
-    # Login with retries
-    client = None
-    for _ in range(3):
-        client = login_client()
-        if client:
-            break
-        time.sleep(10)
+    # Initialize fresh session if needed
+    if not os.path.exists(SESSION_FILE):
+        create_fresh_session()
+
+    # Login with resilience
+    cl = Client()
+    cl.delay_range = [3, 7]  # Human-like delays
     
-    if not client:
-        logger.error("❌ Permanent login failure")
-        exit(1)
+    try:
+        cl.load_settings(SESSION_FILE)
         
-    # Main loop
-    while True:
-        process_groups(client)
-        logger.info("🔄 Next check in 30 seconds...")
-        time.sleep(30)
+        # Force new device if needed
+        if not cl.device:
+            cl.set_device(create_device_settings())
+        
+        # Login with challenge handling
+        try:
+            if not cl.login(USERNAME, PASSWORD):
+                raise Exception("Login returned False")
+        except ChallengeRequired as e:
+            if not handle_challenge(cl, e):
+                raise Exception("Challenge failed")
+        
+        # Verify session
+        if not safe_api_call(cl, cl.get_timeline_feed):
+            raise Exception("Failed to verify session")
+        
+        cl.dump_settings(SESSION_FILE)
+        logger.info("✅ Login successful")
+        
+        # Main loop with cooldown
+        failures = 0
+        while failures < 3:
+            try:
+                if not process_groups(cl):
+                    failures += 1
+                    logger.warning(f"Temporary failure ({failures}/3)")
+                else:
+                    failures = 0
+                
+                # Random cooldown (2-5 minutes)
+                cooldown = random.randint(120, 300)
+                logger.info(f"⏳ Next check in {cooldown//60}m {cooldown%60}s")
+                time.sleep(cooldown)
+                
+            except KeyboardInterrupt:
+                logger.info("🛑 Stopped by user")
+                break
+            except Exception as e:
+                logger.error(f"Loop error: {str(e)}")
+                failures += 1
+                time.sleep(300)  # 5min wait on critical errors
+        
+        if failures >= 3:
+            logger.error("🔴 Too many failures - restart needed")
+            
+    except Exception as e:
+        logger.error(f"💥 Fatal error: {str(e)}")
+    finally:
+        logger.info("🏁 Bot stopped")
