@@ -1,47 +1,55 @@
 from instagrapi import Client
+import os
 import time
 
-# Login to Instagram
-def login(username, password):
+# Load session or login fresh
+def load_or_login(username, password, session_file="session.json"):
     cl = Client()
+    
+    # Try loading session
+    if os.path.exists(session_file):
+        try:
+            cl.load_settings(session_file)
+            cl.login(username, password)  # Will use session if valid
+            print("✅ Session loaded successfully!")
+            return cl
+        except Exception as e:
+            print(f"❌ Session expired/invalid. Logging in fresh: {e}")
+            os.remove(session_file)  # Delete invalid session
+    
+    # Fresh login & save session
     try:
         cl.login(username, password)
-        print("✅ Login successful!")
+        cl.dump_settings(session_file)  # Save session
+        print("✅ New login & session saved!")
         return cl
     except Exception as e:
         print(f"❌ Login failed: {e}")
         return None
 
-# Auto-reply in group chats
+# Auto-reply logic (same as before)
 def auto_reply_in_groups(cl, reply_message):
     while True:
         try:
-            # Get active group chats
             threads = cl.direct_threads()
             for thread in threads:
-                if len(thread.users) > 1:  # Check if it's a group chat
+                if len(thread.users) > 1:  # Group chat
                     last_msg = thread.messages[-1]
                     sender_username = last_msg.user.username
-                    
-                    # Custom reply with mention
                     custom_reply = f"@{sender_username} {reply_message}"
-                    
-                    # Send reply
                     cl.direct_send(custom_reply, thread_id=thread.id)
-                    print(f"📩 Replied to @{sender_username} in group chat.")
-                    
-                    time.sleep(2)  # 2-second delay (avoid rate limits)
+                    print(f"📩 Replied to @{sender_username}")
+                    time.sleep(2)  # Delay
         except Exception as e:
             print(f"⚠ Error: {e}")
-            time.sleep(60)  # Wait 1 min if error occurs
+            time.sleep(60)
 
 if __name__ == "__main__":
-    # ⚠ Replace with your credentials (use environment variables in Railway!)
-    USERNAME = "your_instagram_username"
-    PASSWORD = "your_instagram_password"
+    # ⚠ Use environment variables (Railway secrets)
+    USERNAME = os.getenv("INSTA_USERNAME")  # Set in Railway dashboard
+    PASSWORD = os.getenv("INSTA_PASSWORD")
     REPLY_MSG = "Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
 
-    # Start the bot
-    client = login(USERNAME, PASSWORD)
+    client = load_or_login(USERNAME, PASSWORD)
     if client:
         auto_reply_in_groups(client, REPLY_MSG)
