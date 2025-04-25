@@ -14,206 +14,151 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Configuration
 USERNAME = os.getenv("INSTA_USERNAME") or "your_username"
 PASSWORD = os.getenv("INSTA_PASSWORD") or "your_password"
 SESSION_FILE = "session.json"
-REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+REPLY_TEMPLATE = "@{username} Your message here"
 
-# Latest Instagram version as of 2025
-LATEST_APP_VERSION = "320.0.0.0.0"
-ANDROID_VERSION = 33  # Android 13
-ANDROID_RELEASE = "13.0"
-
-# ===== DEVICE SETTINGS =====
-def get_current_device():
-    return {
-        "app_version": LATEST_APP_VERSION,
-        "android_version": ANDROID_VERSION,
-        "android_release": ANDROID_RELEASE,
+# ===== ENHANCED SESSION HANDLER =====
+def create_fresh_session():
+    device = {
+        "app_version": "320.0.0.0.0",
+        "android_version": 33,
+        "android_release": "13.0",
         "phone_manufacturer": "OnePlus",
         "phone_device": "ONEPLUS A5010",
         "phone_model": "ONEPLUS 5T",
-        "cpu": "qcom",
-        "dpi": "380dpi",
-        "resolution": "1080x1920",
         "device_id": f"android-{random.randint(10**15, (10**16)-1)}"
     }
-
-# ===== SESSION MANAGEMENT =====
-def validate_session():
-    try:
-        with open(SESSION_FILE, 'r') as f:
-            data = json.load(f)
-            if data.get("device_settings", {}).get("app_version") != LATEST_APP_VERSION:
-                logger.warning("Outdated session - resetting device settings")
-                return False
-        return True
-    except Exception:
-        return False
-
-def reset_session_file():
-    device = get_current_device()
+    
     with open(SESSION_FILE, 'w') as f:
         json.dump({
             "cookies": [],
             "last_login": int(time.time()),
             "device_settings": device,
             "user_agent": (
-                f"Instagram {LATEST_APP_VERSION} Android "
-                f"({ANDROID_VERSION}/{ANDROID_RELEASE}; {device['phone_manufacturer']}; "
-                f"{device['phone_model']}; {device['cpu']}; en_US; {device['dpi']})"
+                f"Instagram 320.0.0.0.0 Android (33/13.0; OnePlus; ONEPLUS 5T; "
+                f"qcom; en_US; 380dpi)"
             )
         }, f)
 
-# ===== GROUP CHAT FUNCTIONS =====
-def get_group_chats(cl, max_retries=3):
-    """Robust group chat fetching with retries"""
+# ===== SMART API REQUEST HANDLER =====
+def safe_api_call(cl, func, *args, max_retries=3, **kwargs):
     for attempt in range(max_retries):
         try:
-            threads = cl.direct_threads()
-            if threads is None:
-                raise ValueError("Instagram returned None for threads")
-                
-            groups = [t for t in threads if len(t.users) > 1]
-            logger.info(f"Found {len(groups)} active groups")
-            return groups
-            
-        except (ClientError, AttributeError) as e:
-            wait = 2 ** attempt + random.random()
-            logger.warning(f"Attempt {attempt+1}/{max_retries} failed: {str(e)} - Retrying in {wait:.1f}s")
+            result = func(*args, **kwargs)
+            if result is None:
+                raise ValueError("API returned None")
+            return result
+        except Exception as e:
+            wait = min(2 ** attempt + random.random(), 15)  # Max 15s wait
+            logger.warning(f"Attempt {attempt+1}/{max_retries} failed: {str(e)} - Waiting {wait:.1f}s")
             time.sleep(wait)
     
-    logger.error("Failed to fetch groups after retries")
-    return []
+    logger.error(f"Permanent failure calling {func.__name__}")
+    return None
 
+# ===== GROUP CHAT PROCESSOR =====
 def process_groups(cl):
-    """Safer group processing with full error handling"""
     try:
-        groups = get_group_chats(cl)
+        # Get groups with error handling
+        threads = safe_api_call(cl, cl.direct_threads)
+        if not threads:
+            return False
+
+        groups = [t for t in threads if len(t.users) > 1]
         if not groups:
+            logger.info("No active groups found")
             return False
 
         for group in groups:
             try:
-                # Verify group access first
-                group_info = cl.direct_thread(group.id)
+                # Verify group access
+                group_info = safe_api_call(cl, cl.direct_thread, group.id)
                 if not group_info:
-                    logger.warning(f"Can't access group {group.id[:4]}... - possibly removed")
+                    logger.warning(f"Lost access to group {group.id[:4]}...")
                     continue
 
-                # Get messages with safety check
-                messages = cl.direct_messages(thread_id=group.id, amount=3) or []
+                # Get messages safely
+                messages = safe_api_call(cl, cl.direct_messages, thread_id=group.id, amount=3)
                 if not messages:
                     continue
 
+                # Process last message
                 last_msg = messages[-1]
                 if last_msg.user_id == cl.user_id:
                     continue
 
-                # Send reply with verification
-                user = cl.user_info(last_msg.user_id)
+                # Send reply
+                user = safe_api_call(cl, cl.user_info, last_msg.user_id)
                 if not user:
-                    logger.warning(f"Couldn't fetch user info for {last_msg.user_id}")
                     continue
 
                 reply_text = REPLY_TEMPLATE.format(username=user.username)
-                time.sleep(random.uniform(3.0, 8.0))
+                time.sleep(random.uniform(5.0, 10.0))
                 
-                # Verify sending capability
-                if cl.direct_send(text=reply_text, thread_ids=[group.id]):
+                if safe_api_call(cl, cl.direct_send, text=reply_text, thread_ids=[group.id]):
                     logger.info(f"Replied to @{user.username}")
                 else:
-                    logger.warning("Failed to send reply (no error raised)")
+                    logger.warning("Failed to send reply")
                 
-            except ClientError as e:
-                if "Not in group" in str(e):
-                    logger.warning(f"Removed from group {group.id[:4]}...")
-                else:
-                    logger.error(f"Group processing error: {str(e)}")
             except Exception as e:
-                logger.error(f"Unexpected group error: {str(e)}")
+                logger.error(f"Group error: {str(e)}")
             
-            time.sleep(random.randint(5, 15))
+            time.sleep(random.randint(10, 20))
         
-        return bool(groups)  # True if we processed any groups
+        return True
         
     except Exception as e:
-        logger.error(f"Critical process_groups error: {str(e)}")
+        logger.error(f"Critical error: {str(e)}")
         return False
-
-# ===== LOGIN HANDLER =====
-def login_client():
-    if not validate_session():
-        reset_session_file()
-    
-    cl = Client()
-    cl.delay_range = [2, 5]  # Human-like delays
-    
-    try:
-        cl.load_settings(SESSION_FILE)
-        time.sleep(random.uniform(1.0, 3.0))
-        
-        if not cl.device:
-            cl.set_device(get_current_device())
-            
-        if cl.login(USERNAME, PASSWORD):
-            cl.get_timeline_feed()  # Verify API access
-            cl.dump_settings(SESSION_FILE)
-            logger.info("✅ Login successful")
-            return cl
-            
-    except ChallengeRequired:
-        logger.error("🔐 Verification required - check your phone")
-    except Exception as e:
-        logger.error(f"Login failed: {str(e)}")
-        reset_session_file()
-    
-    return None
 
 # ===== MAIN EXECUTION =====
 if __name__ == "__main__":
-    logger.info("🚀 Starting enhanced Instagram bot")
+    logger.info("🚀 Starting Instagram bot")
     
-    # Login with retries
-    client = None
-    for attempt in range(3):
-        delay = 2 ** attempt + random.random()
-        logger.info(f"Attempt {attempt+1}/3 - Waiting {delay:.1f}s")
-        time.sleep(delay)
-        
-        client = login_client()
-        if client:
-            break
+    # Initialize fresh session if needed
+    if not os.path.exists(SESSION_FILE):
+        create_fresh_session()
+
+    # Login with resilience
+    cl = Client()
+    cl.delay_range = [3, 7]
     
-    if not client:
-        logger.error("❌ Failed to login after 3 attempts")
-        exit(1)
-        
-    # Main loop with failure tolerance
     try:
-        consecutive_failures = 0
-        while consecutive_failures < 3:
+        cl.load_settings(SESSION_FILE)
+        if not cl.login(USERNAME, PASSWORD):
+            raise Exception("Login failed")
+        
+        cl.dump_settings(SESSION_FILE)
+        logger.info("✅ Login successful")
+        
+        # Main loop with cooldown periods
+        failures = 0
+        while failures < 3:
             try:
-                if not process_groups(client):
-                    consecutive_failures += 1
-                    logger.warning(f"Group check failed ({consecutive_failures}/3)")
+                if not process_groups(cl):
+                    failures += 1
+                    logger.warning(f"Temporary failure ({failures}/3)")
                 else:
-                    consecutive_failures = 0
+                    failures = 0
                 
-                delay = random.randint(120, 300)
-                logger.info(f"⏳ Next check in {delay//60}m {delay%60}s")
-                time.sleep(delay)
+                # Random cooldown (3-8 minutes)
+                cooldown = random.randint(180, 480)
+                logger.info(f"⏳ Next check in {cooldown//60}m {cooldown%60}s")
+                time.sleep(cooldown)
                 
             except KeyboardInterrupt:
                 logger.info("🛑 Stopped by user")
                 break
             except Exception as e:
-                logger.error(f"Main loop error: {str(e)}")
-                consecutive_failures += 1
-                time.sleep(60)
+                logger.error(f"Loop error: {str(e)}")
+                failures += 1
+                time.sleep(300)  # 5min wait on critical errors
         
-        if consecutive_failures >= 3:
-            logger.error("🚨 Too many consecutive failures - stopping")
+        if failures >= 3:
+            logger.error("🔴 Too many failures - restart recommended")
             
     except Exception as e:
         logger.error(f"💥 Fatal error: {str(e)}")
