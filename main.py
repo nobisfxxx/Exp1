@@ -1,109 +1,97 @@
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired, ChallengeRequired
-import time
 import os
+import json
+import time
 import random
-from datetime import datetime
 
-# Configuration
-USERNAME = os.getenv("INSTA_USERNAME")
-PASSWORD = os.getenv("INSTA_PASSWORD")
-SESSION_FILE = "session.json"
-REPLY_MSG = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
-MIN_DELAY = 5  # seconds
-MAX_DELAY = 15  # seconds
-PROXY = None  # "http://user:pass@ip:port"
-
-def create_client():
-    cl = Client()
-    cl.delay_range = [MIN_DELAY, MAX_DELAY]
-    
-    if PROXY:
-        cl.set_proxy(PROXY)
-    
-    # Set realistic device/user-agent
-    cl.set_user_agent("Instagram 219.0.0.12.117 Android")
-    cl.set_device({
-        "app_version": "219.0.0.12.117",
-        "android_version": 25,
-        "android_release": "7.1.2"
-    })
-    return cl
-
-def login_helper(cl):
+def validate_session_file(session_path):
+    """Ensure session.json has correct format"""
+    if not os.path.exists(session_path):
+        return False
+        
     try:
-        if os.path.exists(SESSION_FILE):
-            cl.load_settings(SESSION_FILE)
-        
-        login_via_session = False
-        login_via_pw = False
-
-        if cl.settings:
-            try:
-                cl.get_timeline_feed()
-                login_via_session = True
-            except LoginRequired:
-                print("Session expired - logging in with password")
-                cl.login(USERNAME, PASSWORD)
-                login_via_pw = True
-        else:
-            print("No session found - logging in with password")
-            cl.login(USERNAME, PASSWORD)
-            login_via_pw = True
-
-        if login_via_pw:
-            cl.dump_settings(SESSION_FILE)
-            print("New session saved")
-        
+        with open(session_path) as f:
+            data = json.load(f)
+            if not isinstance(data, dict):
+                return False
+            if 'cookies' not in data:
+                return False
         return True
-    except ChallengeRequired:
-        print("Challenge required! Check your Instagram app")
-        return False
-    except Exception as e:
-        print(f"Login failed: {str(e)}")
+    except:
         return False
 
-def safe_reply(cl, thread):
-    try:
-        last_msg = thread.messages[-1]
-        user_id = last_msg.user_id
-        user_info = cl.user_info(user_id)
-        
-        if user_info.username.lower() != USERNAME.lower():  # Don't reply to self
-            reply_text = REPLY_MSG.format(username=user_info.username)
-            cl.direct_send(reply_text, thread_id=thread.id)
-            print(f"{datetime.now()} - Replied to @{user_info.username}")
-            
-            # Random delay between actions
-            delay = random.randint(MIN_DELAY, MAX_DELAY)
-            time.sleep(delay)
-    except Exception as e:
-        print(f"Error in reply: {str(e)}")
-        time.sleep(60)
+def create_clean_session():
+    """Create fresh session file with proper structure"""
+    return {
+        "cookies": [],
+        "last_login": 0,
+        "device_settings": {},
+        "user_agent": "Instagram 219.0.0.12.117 Android",
+        "uuids": {},
+        "phone_id": None,
+        "device_id": None,
+        "adid": None,
+        "session_id": None
+    }
 
-def main():
-    cl = create_client()
+def login_client():
+    cl = Client()
+    SESSION_FILE = "session.json"
     
-    if not login_helper(cl):
-        print("Failed to login. Exiting.")
-        return
-
-    print("Bot started - Ctrl+C to stop")
-    while True:
+    # 1. Validate or recreate session file
+    if not validate_session_file(SESSION_FILE):
+        print("Creating fresh session file...")
+        with open(SESSION_FILE, 'w') as f:
+            json.dump(create_clean_session(), f)
+    
+    # 2. Configure client
+    cl.delay_range = [3, 7]
+    cl.set_user_agent("Instagram 219.0.0.12.117 Android")
+    
+    # 3. Attempt login
+    try:
+        # First try with session
+        cl.load_settings(SESSION_FILE)
+        cl.login(USERNAME, PASSWORD)
+        
+        # Verify login worked
         try:
-            threads = cl.direct_threads()
-            for thread in threads:
-                if len(thread.users) > 1:  # Only group chats
-                    safe_reply(cl, thread)
+            cl.get_timeline_feed()
+            print("✅ Login successful via session")
+            return cl
+        except LoginRequired:
+            print("⚠ Session expired - trying fresh login")
+            cl.login(USERNAME, PASSWORD)
+            cl.dump_settings(SESSION_FILE)
+            print("✅ New session created")
+            return cl
             
-            # Random pause between checks
-            time.sleep(random.randint(30, 120))
-        except KeyboardInterrupt:
-            print("Stopping bot...")
-            break
-        except Exception as e:
-            print(f"Main error: {str(e)}")
-            time.sleep(300)  # Wait 5 minutes on major errors
+    except ChallengeRequired:
+        print("🔐 Challenge required! Check your Instagram app")
+    except Exception as e:
+        print(f"❌ Login failed: {str(e)}")
+        # Completely reset session if failing
+        with open(SESSION_FILE, 'w') as f:
+            json.dump(create_clean_session(), f)
+    
+    return None
 
 if __name__ == "__main__":
-    main()
+    USERNAME = os.getenv("INSTA_USERNAME")
+    PASSWORD = os.getenv("INSTA_PASSWORD")
+    
+    # Try login 3 times with delays
+    for attempt in range(3):
+        client = login_client()
+        if client:
+            break
+        wait_time = random.randint(30, 120)
+        print(f"Retrying in {wait_time} seconds...")
+        time.sleep(wait_time)
+    else:
+        print("Failed after 3 attempts. Check credentials/network.")
+        exit(1)
+    
+    # Main bot logic here
+    print("Bot successfully started!")
