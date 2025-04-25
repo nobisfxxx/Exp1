@@ -14,8 +14,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-USERNAME = os.getenv("INSTA_USERNAME") or "your_username"  # Replace or use env
-PASSWORD = os.getenv("INSTA_PASSWORD") or "your_password"  # Replace or use env
+USERNAME = os.getenv("INSTA_USERNAME") or "your_username"
+PASSWORD = os.getenv("INSTA_PASSWORD") or "your_password"
 SESSION_FILE = "session.json"
 REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
 
@@ -66,60 +66,80 @@ def reset_session_file():
         }, f)
 
 # ===== GROUP CHAT FUNCTIONS =====
-def get_group_chats(cl):
-    """Get active group chats with error handling"""
-    try:
-        threads = cl.direct_threads()
-        return [t for t in threads if len(t.users) > 1]  # Filter groups
-    except ClientError as e:
-        if "Not authorized" in str(e):
-            logger.error("❌ Bot was removed from all groups")
-        else:
-            logger.error(f"Failed to fetch groups: {str(e)}")
-        return []
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return []
+def get_group_chats(cl, max_retries=3):
+    """Robust group chat fetching with retries"""
+    for attempt in range(max_retries):
+        try:
+            threads = cl.direct_threads()
+            if threads is None:
+                raise ValueError("Instagram returned None for threads")
+                
+            groups = [t for t in threads if len(t.users) > 1]
+            logger.info(f"Found {len(groups)} active groups")
+            return groups
+            
+        except (ClientError, AttributeError) as e:
+            wait = 2 ** attempt + random.random()
+            logger.warning(f"Attempt {attempt+1}/{max_retries} failed: {str(e)} - Retrying in {wait:.1f}s")
+            time.sleep(wait)
+    
+    logger.error("Failed to fetch groups after retries")
+    return []
 
 def process_groups(cl):
-    """Process messages in groups with safety checks"""
-    groups = get_group_chats(cl)
-    if not groups:
-        logger.warning("No active groups found")
-        return False
+    """Safer group processing with full error handling"""
+    try:
+        groups = get_group_chats(cl)
+        if not groups:
+            return False
 
-    for group in groups:
-        try:
-            logger.info(f"💬 Checking group: {group.id[:4]}...{group.id[-4:]}")
-            
-            # Get recent messages (max 3 to avoid detection)
-            messages = cl.direct_messages(thread_id=group.id, amount=3)
-            if not messages:
-                continue
+        for group in groups:
+            try:
+                # Verify group access first
+                group_info = cl.direct_thread(group.id)
+                if not group_info:
+                    logger.warning(f"Can't access group {group.id[:4]}... - possibly removed")
+                    continue
+
+                # Get messages with safety check
+                messages = cl.direct_messages(thread_id=group.id, amount=3) or []
+                if not messages:
+                    continue
+
+                last_msg = messages[-1]
+                if last_msg.user_id == cl.user_id:
+                    continue
+
+                # Send reply with verification
+                user = cl.user_info(last_msg.user_id)
+                if not user:
+                    logger.warning(f"Couldn't fetch user info for {last_msg.user_id}")
+                    continue
+
+                reply_text = REPLY_TEMPLATE.format(username=user.username)
+                time.sleep(random.uniform(3.0, 8.0))
                 
-            last_msg = messages[-1]
-            if last_msg.user_id == cl.user_id:
-                continue  # Skip own messages
+                # Verify sending capability
+                if cl.direct_send(text=reply_text, thread_ids=[group.id]):
+                    logger.info(f"Replied to @{user.username}")
+                else:
+                    logger.warning("Failed to send reply (no error raised)")
                 
-            # Send reply with random delay
-            user = cl.user_info(last_msg.user_id)
-            reply_text = REPLY_TEMPLATE.format(username=user.username)
+            except ClientError as e:
+                if "Not in group" in str(e):
+                    logger.warning(f"Removed from group {group.id[:4]}...")
+                else:
+                    logger.error(f"Group processing error: {str(e)}")
+            except Exception as e:
+                logger.error(f"Unexpected group error: {str(e)}")
             
-            time.sleep(random.uniform(3.0, 8.0))  # Human-like delay
-            cl.direct_send(text=reply_text, thread_ids=[group.id])
-            logger.info(f"📩 Replied to @{user.username}")
-            
-        except ClientError as e:
-            if "Not in group" in str(e):
-                logger.error(f"🚫 Removed from group {group.id[:4]}...")
-                continue
-            logger.error(f"Group error: {str(e)}")
-        except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
+            time.sleep(random.randint(5, 15))
         
-        time.sleep(random.randint(5, 15))  # Delay between groups
-    
-    return True  # Still active in groups
+        return bool(groups)  # True if we processed any groups
+        
+    except Exception as e:
+        logger.error(f"Critical process_groups error: {str(e)}")
+        return False
 
 # ===== LOGIN HANDLER =====
 def login_client():
@@ -169,18 +189,31 @@ if __name__ == "__main__":
         logger.error("❌ Failed to login after 3 attempts")
         exit(1)
         
-    # Main loop
+    # Main loop with failure tolerance
     try:
-        while True:
-            if not process_groups(client):
-                logger.warning("No groups active - stopping")
-                break
+        consecutive_failures = 0
+        while consecutive_failures < 3:
+            try:
+                if not process_groups(client):
+                    consecutive_failures += 1
+                    logger.warning(f"Group check failed ({consecutive_failures}/3)")
+                else:
+                    consecutive_failures = 0
                 
-            delay = random.randint(120, 300)  # 2-5 minutes
-            logger.info(f"⏳ Next check in {delay//60}m {delay%60}s")
-            time.sleep(delay)
+                delay = random.randint(120, 300)
+                logger.info(f"⏳ Next check in {delay//60}m {delay%60}s")
+                time.sleep(delay)
+                
+            except KeyboardInterrupt:
+                logger.info("🛑 Stopped by user")
+                break
+            except Exception as e:
+                logger.error(f"Main loop error: {str(e)}")
+                consecutive_failures += 1
+                time.sleep(60)
+        
+        if consecutive_failures >= 3:
+            logger.error("🚨 Too many consecutive failures - stopping")
             
-    except KeyboardInterrupt:
-        logger.info("🛑 Stopped by user")
     except Exception as e:
-        logger.error(f"CRASH: {str(e)}")
+        logger.error(f"💥 Fatal error: {str(e)}")
