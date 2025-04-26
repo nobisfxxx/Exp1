@@ -1,22 +1,7 @@
 [
     {
-        "name": "ps_n",
-        "value": "1",
-        "domain": ".instagram.com",
-        "hostOnly": false,
-        "path": "/",
-        "secure": true,
-        "httpOnly": true,
-        "sameSite": "no_restriction",
-        "session": false,
-        "firstPartyDomain": "",
-        "partitionKey": null,
-        "expirationDate": 1779515602,
-        "storeId": null
-    },
-    {
         "name": "datr",
-        "value": "PrL_ZxaJ-fbBXO66IDH9loFw",
+        "value": "dN8MaDAc2cKUEKgHVKcsOx8O",
         "domain": ".instagram.com",
         "hostOnly": false,
         "path": "/",
@@ -26,12 +11,12 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1779370558,
+        "expirationDate": 1780234104,
         "storeId": null
     },
     {
         "name": "ds_user_id",
-        "value": "2232447521",
+        "value": "3118284937",
         "domain": ".instagram.com",
         "hostOnly": false,
         "path": "/",
@@ -41,12 +26,12 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1753360936,
+        "expirationDate": 1753450153,
         "storeId": null
     },
     {
         "name": "csrftoken",
-        "value": "x61nuEF71aZ7NgiUymvGGN26xA7rrGGq",
+        "value": "Zxa11irq2Z3Y4HizUftyUpRu0ZeASvAp",
         "domain": ".instagram.com",
         "hostOnly": false,
         "path": "/",
@@ -56,12 +41,12 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1780144936,
+        "expirationDate": 1780234153,
         "storeId": null
     },
     {
         "name": "ig_did",
-        "value": "01ECD94D-82CA-4A2B-B39C-21F48E6309E0",
+        "value": "2A14D72C-6AC0-489D-94B9-2B05DD570D58",
         "domain": ".instagram.com",
         "hostOnly": false,
         "path": "/",
@@ -71,22 +56,7 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1776346558,
-        "storeId": null
-    },
-    {
-        "name": "ps_l",
-        "value": "1",
-        "domain": ".instagram.com",
-        "hostOnly": false,
-        "path": "/",
-        "secure": true,
-        "httpOnly": true,
-        "sameSite": "lax",
-        "session": false,
-        "firstPartyDomain": "",
-        "partitionKey": null,
-        "expirationDate": 1779515602,
+        "expirationDate": 1777210104,
         "storeId": null
     },
     {
@@ -101,12 +71,12 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1746189730,
+        "expirationDate": 1746278953,
         "storeId": null
     },
     {
         "name": "mid",
-        "value": "Z_-yPwABAAGrQkPVuZUxYwTPbtND",
+        "value": "aAzfdAABAAF7iCtzhO_ZYhAg9wUo",
         "domain": ".instagram.com",
         "hostOnly": false,
         "path": "/",
@@ -116,12 +86,12 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1779370563,
+        "expirationDate": 1780234103,
         "storeId": null
     },
     {
         "name": "sessionid",
-        "value": "2232447521%3Ahhc8LNUVaYFYIw%3A28%3AAYfXwIUFKLnsb4LvU9PPAIDwJxmx-RWCXyWLc_A8gQ",
+        "value": "3118284937%3Aq0wCHH4K9JA2oR%3A16%3AAYeHp6kCavdBaBTryzKRpevMX9JOwIQfL78PuYFEkw",
         "domain": ".instagram.com",
         "hostOnly": false,
         "path": "/",
@@ -131,7 +101,7 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1777120929,
+        "expirationDate": 1777210118,
         "storeId": null
     },
     {
@@ -146,12 +116,12 @@
         "session": false,
         "firstPartyDomain": "",
         "partitionKey": null,
-        "expirationDate": 1746189730,
+        "expirationDate": 1746278926,
         "storeId": null
     },
     {
         "name": "rur",
-        "value": "\"CCO\\0542232447521\\0541777120937:01f788a3c84d0215c452022859e001fe8e393d08e80e1e5238e3e520874f6c0289dceb4d\"",
+        "value": "\"EAG\\0543118284937\\0541777210154:01f72bb57a3959a394429c1a8580f7108fc1365eed8b5d374546e64cb2fc6fc8bdc1a839\"",
         "domain": ".instagram.com",
         "hostOnly": false,
         "path": "/",
