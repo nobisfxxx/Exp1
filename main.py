@@ -3,7 +3,6 @@ import os
 import json
 import time
 import logging
-import sys
 import random
 
 # ===== CONFIGURATION =====
@@ -16,13 +15,12 @@ logger = logging.getLogger(__name__)
 
 USERNAME = os.getenv("INSTA_USERNAME")
 PASSWORD = os.getenv("INSTA_PASSWORD")
-SESSION_FILE = "/app/session.json"
-REPLY_MSG = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
-PROXY = os.getenv("INSTA_PROXY")  # Format: http://user:pass@host:port
+SESSION_FILE = "session.json"
+REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
 
-# ===== SESSION MANAGER =====
-def create_session():
-    """Generate fresh session with device fingerprint"""
+# ===== SESSION HANDLER =====
+def create_fresh_session():
+    """Generate new session with random device fingerprint"""
     return {
         "cookies": [],
         "device_settings": {
@@ -32,7 +30,7 @@ def create_session():
             "dpi": "480dpi",
             "resolution": "1080x1920",
             "manufacturer": random.choice(["Google", "Xiaomi", "Samsung"]),
-            "device": random.choice(["Pixel 7", "Mi 11", "Galaxy S22"]),
+            "device": random.choice(["Pixel 5", "Redmi Note 10", "Galaxy S21"]),
             "phone_id": Client().generate_uuid(),
             "uuid": Client().generate_uuid()
         },
@@ -40,114 +38,115 @@ def create_session():
     }
 
 def reset_session():
-    """Completely wipe and rebuild session file"""
+    """Completely reset session file"""
     with open(SESSION_FILE, 'w') as f:
-        json.dump(create_session(), f)
-    logger.info("Session nuclear reset complete")
+        json.dump(create_fresh_session(), f)
+    logger.info("Created fresh session file")
 
-# ===== LOGIN SYSTEM =====
-def login():
-    """Bulletproof login with 5 retries"""
-    cl = Client()
-    cl.delay_range = [3, 7]
-    
-    for attempt in range(5):
-        try:
-            # Fresh session every attempt
-            reset_session()
-            cl.load_settings(SESSION_FILE)
-            
-            if PROXY:
-                cl.set_proxy(PROXY)
-                logger.info(f"Using proxy: {PROXY.split('@')[-1]}")
-
-            if cl.login(USERNAME, PASSWORD):
-                # Verify session works
-                cl.get_timeline_feed()
-                cl.dump_settings(SESSION_FILE)
-                logger.info("✅ Login conquest successful")
-                return cl
-                
-        except ChallengeRequired:
-            logger.error("Manual verification needed! Check Instagram app")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"Attempt {attempt+1}/5 failed: {str(e)}")
-            time.sleep(attempt * 15)
-    
-    logger.critical("❌ All login attempts failed")
-    sys.exit(1)
-
-# ===== GROUP HANDLER =====
-def get_groups(cl):
-    """Safe group detection without force_refresh"""
-    try:
-        threads = cl.direct_threads()
-        return [t for t in threads if is_valid_group(cl, t)]
-    except Exception as e:
-        logger.error(f"Group scan failed: {str(e)}")
-        return []
-
-def is_valid_group(cl, thread):
-    """Check if thread is an active group"""
-    try:
-        return (
-            hasattr(thread, 'users') and
-            len(thread.users) > 1 and
-            cl.user_id in [u.pk for u in thread.users]
-        )
-    except:
-        return False
-
-def reply_to_group(cl, group):
-    """Send reply with safety checks"""
-    try:
-        messages = cl.direct_messages(thread_id=group.id, amount=1)
-        if not messages or messages[-1].user_id == cl.user_id:
-            return
-
-        user = cl.user_info(messages[-1].user_id)
-        cl.direct_send(
-            text=REPLY_MSG.format(username=user.username),
-            thread_ids=[group.id]
-        )
-        logger.info(f"📩 Replied to @{user.username}")
-        time.sleep(random.uniform(2, 5))
+# ===== CORE BOT =====
+class InstagramBot:
+    def __init__(self):
+        self.client = Client()
+        self.client.delay_range = [2, 5]
         
-    except Exception as e:
-        logger.error(f"Reply failed: {str(e)}")
-        if "not in group" in str(e).lower():
-            cl.direct_threads()  # Refresh cache
+    def login(self):
+        """Smart login with session recovery"""
+        try:
+            if not os.path.exists(SESSION_FILE):
+                reset_session()
+            
+            self.client.load_settings(SESSION_FILE)
+            if not self.client.login(USERNAME, PASSWORD):
+                raise Exception("Login returned False")
+                
+            # Verify session works
+            self.client.get_timeline_feed()
+            logger.info("✅ Login successful")
+            return True
+            
+        except ChallengeRequired:
+            logger.error("🔐 Complete verification in Instagram app!")
+            return False
+        except Exception as e:
+            logger.error(f"Login failed: {str(e)}")
+            reset_session()
+            return False
 
-# ===== MAIN BOT =====
-def run_bot():
-    """Main execution flow"""
-    logger.info("🚀 Starting Instagram Sentinel")
+    def get_active_groups(self):
+        """Safe group detection without force_refresh"""
+        try:
+            threads = self.client.direct_threads()
+            return [t for t in threads if self._is_valid_group(t)]
+        except Exception as e:
+            logger.error(f"Group fetch failed: {str(e)}")
+            return []
+
+    def _is_valid_group(self, thread):
+        """Check if thread is an active group"""
+        try:
+            return (
+                hasattr(thread, 'users') and
+                len(thread.users) > 1 and
+                self.client.user_id in [u.pk for u in thread.users]
+            )
+        except:
+            return False
+
+    def reply_in_group(self, group):
+        """Send reply with safety checks"""
+        try:
+            messages = self.client.direct_messages(thread_id=group.id, amount=1)
+            if not messages or messages[-1].user_id == self.client.user_id:
+                return
+
+            user = self.client.user_info(messages[-1].user_id)
+            self.client.direct_send(
+                text=REPLY_TEMPLATE.format(username=user.username),
+                thread_ids=[group.id]
+            )
+            logger.info(f"📩 Replied to @{user.username}")
+            time.sleep(random.uniform(1, 3))
+            
+        except Exception as e:
+            logger.error(f"Reply failed: {str(e)}")
+            if "not in group" in str(e).lower():
+                self.client.direct_threads()  # Refresh cache
+
+# ===== MAIN =====
+def main():
+    bot = InstagramBot()
     
-    # Phase 1: Login
-    client = login()
-    
-    # Phase 2: Group Monitoring
-    logger.info("🔍 Beginning group surveillance")
+    # Login with retries
+    for attempt in range(3):
+        if bot.login():
+            break
+        logger.warning(f"Retry {attempt+1}/3 in 10 seconds...")
+        time.sleep(10)
+    else:
+        logger.error("❌ Permanent login failure")
+        return
+
+    # Main loop
+    logger.info("🤖 Bot activated - Monitoring groups")
     while True:
         try:
-            groups = get_groups(client)
-            logger.info(f"🎯 Active groups: {len(groups)}")
+            groups = bot.get_active_groups()
+            logger.info(f"📊 Active groups: {len(groups)}")
             
             for group in groups:
-                reply_to_group(client, group)
+                bot.reply_in_group(group)
             
-            # Randomized sleep (45-120s)
-            sleep_time = random.randint(45, 120)
+            # Random sleep (30-90s)
+            sleep_time = random.randint(30, 90)
             logger.info(f"💤 Sleeping for {sleep_time}s")
             time.sleep(sleep_time)
             
         except KeyboardInterrupt:
-            logger.info("🛑 Manual shutdown initiated")
+            logger.info("🛑 Manual shutdown")
             break
         except Exception as e:
-            logger.error(f"System failure: {str(e)}")
+            logger.error(f"Error: {str(e)}")
             time.sleep(60)
 
 if __name__ == "__main__":
-    run_bot()
+    main()
