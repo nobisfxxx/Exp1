@@ -1,9 +1,12 @@
 from instagrapi import Client
+from instagrapi.exceptions import ChallengeRequired, LoginRequired
 import os
 import json
 import time
-import logging
 import random
+import logging
+import sys
+from datetime import datetime
 
 # ===== CONFIGURATION =====
 logging.basicConfig(
@@ -16,128 +19,164 @@ logger = logging.getLogger(__name__)
 USERNAME = os.getenv("INSTA_USERNAME")
 PASSWORD = os.getenv("INSTA_PASSWORD")
 SESSION_FILE = "session.json"
-REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+REPLY_MSG = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
+PROXY = os.getenv("INSTA_PROXY")  # http://user:pass@host:port
 
-# ===== SESSION HANDLER =====
-def create_fresh_session():
-    """Generate new session with random device fingerprint"""
+# ===== DEVICE FINGERPRINT =====
+def generate_device():
+    """Create randomized device fingerprint"""
+    return {
+        "app_version": "287.0.0.19.301",
+        "android_version": random.randint(28, 33),
+        "android_release": f"{random.randint(9, 13)}.0.0",
+        "dpi": "480dpi",
+        "resolution": "1080x1920",
+        "manufacturer": random.choice(["Google", "Samsung", "OnePlus"]),
+        "device": random.choice(["Pixel 7", "Galaxy S23", "ONEPLUS A6013"]),
+        "model": random.choice(["QP1A.190711.020", "SM-S901U", "ONEPLUS A6013"]),
+        "cpu": random.choice(["qcom", "exynos"]),
+        "phone_id": Client().generate_uuid(),
+        "uuid": Client().generate_uuid()
+    }
+
+# ===== SESSION MANAGER =====
+def create_session():
+    """Generate fresh session with device fingerprint"""
     return {
         "cookies": [],
-        "device_settings": {
-            "app_version": "250.0.0.16.117",
-            "android_version": random.randint(25, 30),
-            "android_release": f"{random.randint(9, 13)}.0.0",
-            "dpi": "480dpi",
-            "resolution": "1080x1920",
-            "manufacturer": random.choice(["Google", "Xiaomi", "Samsung"]),
-            "device": random.choice(["Pixel 5", "Redmi Note 10", "Galaxy S21"]),
-            "phone_id": Client().generate_uuid(),
-            "uuid": Client().generate_uuid()
-        },
-        "user_agent": "Instagram 250.0.0.16.117 Android"
+        "device_settings": generate_device(),
+        "user_agent": "Instagram 287.0.0.19.301 Android",
+        "last_login": int(time.time())
     }
 
 def reset_session():
     """Completely reset session file"""
     with open(SESSION_FILE, 'w') as f:
-        json.dump(create_fresh_session(), f)
-    logger.info("Created fresh session file")
+        json.dump(create_session(), f)
+    logger.info("Nuclear session reset complete")
 
-# ===== CORE BOT =====
-class InstagramBot:
-    def __init__(self):
-        self.client = Client()
-        self.client.delay_range = [2, 5]
-        
-    def login(self):
-        """Smart login with session recovery"""
+# ===== CHALLENGE HANDLER =====
+def handle_challenge(client, challenge_url):
+    """Automate challenge resolution"""
+    logger.warning(f"Attempting to solve challenge: {challenge_url}")
+    try:
+        # Try email verification
+        if "challenge" in challenge_url:
+            client.challenge_resolve(challenge_url)
+            logger.info("Challenge auto-solved via email")
+            return True
+    except Exception as e:
+        logger.error(f"Challenge failed: {str(e)}")
+        return False
+
+# ===== LOGIN SYSTEM =====
+def login(client):
+    """Military-grade login with challenge bypass"""
+    for attempt in range(3):
         try:
-            if not os.path.exists(SESSION_FILE):
-                reset_session()
+            # Fresh session every attempt
+            reset_session()
+            client.load_settings(SESSION_FILE)
             
-            self.client.load_settings(SESSION_FILE)
-            if not self.client.login(USERNAME, PASSWORD):
+            if PROXY:
+                client.set_proxy(PROXY)
+                logger.info(f"Using proxy: {PROXY.split('@')[-1]}")
+
+            # Critical headers
+            client.set_headers({
+                "X-IG-App-Locale": "en_US",
+                "X-IG-Device-Locale": "en_US",
+                "X-IG-Mapped-Locale": "en_US",
+                "X-Pigeon-Session-Id": client.generate_uuid(),
+                "X-IG-Connection-Speed": f"{random.randint(3, 20)}Mbps",
+            })
+
+            # Human-like delay
+            time.sleep(random.randint(5, 15))
+            
+            if not client.login(USERNAME, PASSWORD):
                 raise Exception("Login returned False")
-                
-            # Verify session works
-            self.client.get_timeline_feed()
-            logger.info("✅ Login successful")
+
+            # Verify session
+            client.get_timeline_feed()
+            client.dump_settings(SESSION_FILE)
+            logger.info("✅ Login conquest successful")
             return True
             
-        except ChallengeRequired:
-            logger.error("🔐 Complete verification in Instagram app!")
-            return False
+        except ChallengeRequired as e:
+            if not handle_challenge(client, str(e)):
+                logger.error("Manual verification required in Instagram app!")
+                sys.exit(1)
         except Exception as e:
-            logger.error(f"Login failed: {str(e)}")
-            reset_session()
-            return False
-
-    def get_active_groups(self):
-        """Safe group detection without force_refresh"""
-        try:
-            threads = self.client.direct_threads()
-            return [t for t in threads if self._is_valid_group(t)]
-        except Exception as e:
-            logger.error(f"Group fetch failed: {str(e)}")
-            return []
-
-    def _is_valid_group(self, thread):
-        """Check if thread is an active group"""
-        try:
-            return (
-                hasattr(thread, 'users') and
-                len(thread.users) > 1 and
-                self.client.user_id in [u.pk for u in thread.users]
-            )
-        except:
-            return False
-
-    def reply_in_group(self, group):
-        """Send reply with safety checks"""
-        try:
-            messages = self.client.direct_messages(thread_id=group.id, amount=1)
-            if not messages or messages[-1].user_id == self.client.user_id:
-                return
-
-            user = self.client.user_info(messages[-1].user_id)
-            self.client.direct_send(
-                text=REPLY_TEMPLATE.format(username=user.username),
-                thread_ids=[group.id]
-            )
-            logger.info(f"📩 Replied to @{user.username}")
-            time.sleep(random.uniform(1, 3))
-            
-        except Exception as e:
-            logger.error(f"Reply failed: {str(e)}")
-            if "not in group" in str(e).lower():
-                self.client.direct_threads()  # Refresh cache
-
-# ===== MAIN =====
-def main():
-    bot = InstagramBot()
+            logger.error(f"Attempt {attempt+1}/3 failed: {str(e)}")
+            time.sleep(attempt * 30)
     
-    # Login with retries
-    for attempt in range(3):
-        if bot.login():
-            break
-        logger.warning(f"Retry {attempt+1}/3 in 10 seconds...")
-        time.sleep(10)
-    else:
-        logger.error("❌ Permanent login failure")
+    logger.critical("❌ Maximum login attempts reached")
+    sys.exit(1)
+
+# ===== GROUP SYSTEM =====
+def get_active_groups(client):
+    """Safe group detection with error handling"""
+    try:
+        threads = client.direct_threads()
+        return [t for t in threads if is_valid_group(client, t)]
+    except Exception as e:
+        logger.error(f"Group scan failed: {str(e)}")
+        return []
+
+def is_valid_group(client, thread):
+    """Validate group structure and membership"""
+    try:
+        return (
+            hasattr(thread, 'users') and
+            len(thread.users) > 1 and
+            client.user_id in [u.pk for u in thread.users]
+        )
+    except:
+        return False
+
+def reply_in_group(client, group):
+    """Send reply with version-safe method"""
+    try:
+        messages = client.direct_messages(thread_id=group.id, amount=1)
+        if not messages or messages[-1].user_id == client.user_id:
+            return
+
+        user = client.user_info(messages[-1].user_id)
+        client.direct_send(
+            text=REPLY_MSG.format(username=user.username),
+            thread_ids=[group.id]
+        )
+        logger.info(f"📩 Replied to @{user.username}")
+        time.sleep(random.uniform(2, 5))
+        
+    except Exception as e:
+        logger.error(f"Reply failed: {str(e)}")
+        if "not in group" in str(e).lower():
+            client.direct_threads()  # Refresh cache
+
+# ===== MAIN BOT =====
+def main():
+    logger.info("🚀 Starting Instagram Sentinel v3.0")
+    client = Client()
+    client.delay_range = [3, 7]
+
+    # Phase 1: Login
+    if not login(client):
         return
 
-    # Main loop
-    logger.info("🤖 Bot activated - Monitoring groups")
+    # Phase 2: Group Operations
+    logger.info("🔍 Beginning group surveillance")
     while True:
         try:
-            groups = bot.get_active_groups()
-            logger.info(f"📊 Active groups: {len(groups)}")
+            groups = get_active_groups(client)
+            logger.info(f"🎯 Active groups: {len(groups)}")
             
             for group in groups:
-                bot.reply_in_group(group)
+                reply_in_group(client, group)
             
-            # Random sleep (30-90s)
-            sleep_time = random.randint(30, 90)
+            # Randomized sleep (45-120s)
+            sleep_time = random.randint(45, 120)
             logger.info(f"💤 Sleeping for {sleep_time}s")
             time.sleep(sleep_time)
             
@@ -145,7 +184,7 @@ def main():
             logger.info("🛑 Manual shutdown")
             break
         except Exception as e:
-            logger.error(f"Error: {str(e)}")
+            logger.error(f"System failure: {str(e)}")
             time.sleep(60)
 
 if __name__ == "__main__":
