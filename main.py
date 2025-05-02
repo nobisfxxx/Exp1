@@ -1,144 +1,197 @@
-from instagrapi import Client
-from instagrapi.exceptions import LoginRequired, ChallengeRequired
+#!/usr/bin/env python3
 import os
-import json
 import time
-import logging
-from datetime import datetime
-
-# ===== CONFIGURATION =====
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+from io import BytesIO
+from urllib.parse import urlparse
+import requests
+from telegram import Update, InputFile
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    MessageHandler,
+    Filters,
+    CallbackContext,
+    Defaults
 )
-logger = logging.getLogger(__name__)
 
-USERNAME = os.getenv("INSTA_USERNAME")
-PASSWORD = os.getenv("INSTA_PASSWORD")
-SESSION_FILE = "/app/session.json"
-REPLY_TEMPLATE = "@{username} Oii massage maat kar warga nobi aa jaega 😡🪓🌶"
-
-# ===== SESSION MANAGEMENT =====
-def validate_session():
-    """Ensure session file structure is valid"""
-    required_keys = ["cookies", "last_login", "device_settings", "user_agent"]
-    try:
-        with open(SESSION_FILE, 'r') as f:
-            data = json.load(f)
-            if not all(key in data for key in required_keys):
-                raise ValueError("Invalid session structure")
-    except (json.JSONDecodeError, ValueError, FileNotFoundError):
-        logger.warning("Resetting corrupted session file")
-        reset_session_file()
-
-def reset_session_file():
-    """Create fresh valid session structure"""
-    with open(SESSION_FILE, 'w') as f:
-        json.dump({
-            "cookies": [],
-            "last_login": int(time.time()),
-            "device_settings": {
-                "app_version": "219.0.0.12.117",
-                "android_version": 25,
-                "android_release": "7.1.2"
-            },
-            "user_agent": "Instagram 219.0.0.12.117 Android"
-        }, f)
-
-# ===== CORE FUNCTIONALITY =====
-def login_client():
-    """Robust login with session recovery"""
-    validate_session()
-    
-    cl = Client()
-    try:
-        cl.load_settings(SESSION_FILE)
-        cl.login(USERNAME, PASSWORD)
-        cl.get_timeline_feed()  # Verify session
-        logger.info("✅ Login successful")
-        return cl
-    except (LoginRequired, AttributeError):
-        logger.warning("Session expired - fresh login")
-        return fresh_login()
-    except Exception as e:
-        logger.error(f"Login failed: {str(e)}")
-        return None
-
-def fresh_login():
-    """Force new login and session creation"""
-    cl = Client()
-    try:
-        cl.login(USERNAME, PASSWORD)
-        cl.dump_settings(SESSION_FILE)
-        return cl
-    except Exception as e:
-        logger.error(f"Fresh login failed: {str(e)}")
-        return None
-
-def get_group_chats(cl):
-    """Get group chats by checking participant count"""
-    try:
-        all_threads = cl.direct_threads()
-        groups = [t for t in all_threads if len(t.users) > 1]
-        logger.info(f"📦 Found {len(groups)} group chats")
-        return groups
-    except Exception as e:
-        logger.error(f"Failed to get groups: {str(e)}")
-        return []
-
-def process_groups(cl):
-    """Process messages in all group chats"""
-    groups = get_group_chats(cl)
-    if not groups:
-        logger.warning("No groups found! Check if account is added to groups")
-        return
-
-    for group in groups:
-        try:
-            logger.info(f"💬 Processing group: {group.id}")
-            
-            # Get last 5 messages
-            messages = cl.direct_messages(thread_id=group.id, amount=5)
-            if not messages:
-                continue
-                
-            last_msg = messages[-1]
-            if last_msg.user_id == cl.user_id:
-                continue  # Skip own messages
-                
-            # Send reply (version-compatible)
-            user = cl.user_info(last_msg.user_id)
-            reply_text = REPLY_TEMPLATE.format(username=user.username)
-            cl.direct_send(
-                text=reply_text,
-                thread_ids=[group.id]  # Critical fix here
-            )
-            logger.info(f"📩 Replied to @{user.username}")
-            time.sleep(2)
-            
-        except Exception as e:
-            logger.error(f"Group error: {str(e)}")
-            time.sleep(5)
-
-# ===== MAIN EXECUTION =====
-if __name__ == "__main__":
-    logger.info("🚀 Starting bot")
-    
-    # Login with retries
-    client = None
-    for _ in range(3):
-        client = login_client()
-        if client:
-            break
-        time.sleep(10)
-    
-    if not client:
-        logger.error("❌ Permanent login failure")
-        exit(1)
+class TeraboxDownloaderBot:
+    def __init__(self):
+        self.token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if not self.token:
+            raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set!")
         
-    # Main loop
-    while True:
-        process_groups(client)
-        logger.info("🔄 Next check in 30 seconds...")
-        time.sleep(30)
+        # Configure bot with better defaults
+        defaults = Defaults(
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            timeout=30
+        )
+        
+        self.updater = Updater(
+            token=self.token,
+            defaults=defaults,
+            use_context=True
+        )
+        self.dispatcher = self.updater.dispatcher
+        
+        # Register handlers
+        self._register_handlers()
+        
+        # Rate limiting (requests per user)
+        self.user_cooldown = {}
+
+    def _register_handlers(self):
+        handlers = [
+            CommandHandler("start", self._start_handler),
+            CommandHandler("help", self._help_handler),
+            MessageHandler(
+                Filters.text & ~Filters.command,
+                self._message_handler
+            )
+        ]
+        for handler in handlers:
+            self.dispatcher.add_handler(handler)
+
+    def _check_rate_limit(self, user_id: int) -> bool:
+        """Returns True if user is rate limited"""
+        now = time.time()
+        if user_id in self.user_cooldown:
+            last_time = self.user_cooldown[user_id]
+            if now - last_time < 5:  # 5 seconds cooldown
+                return True
+        self.user_cooldown[user_id] = now
+        return False
+
+    def _validate_url(self, url: str) -> bool:
+        """Validate Terabox URLs"""
+        try:
+            parsed = urlparse(url)
+            return all([
+                parsed.scheme in ("http", "https"),
+                parsed.netloc.endswith(("terabox.com", "terasharelink.com")),
+                parsed.path.startswith("/s/")
+            ])
+        except:
+            return False
+
+    def _extract_filename(self, url: str, headers: dict) -> str:
+        """Extract filename from headers or URL"""
+        if "content-disposition" in headers:
+            cd = headers["content-disposition"]
+            if "filename=" in cd:
+                return cd.split("filename=")[1].strip('"\'')
+        return os.path.basename(urlparse(url).path) or "terabox_file"
+
+    def _download_file(self, url: str) -> tuple:
+        """Download file with progress tracking"""
+        try:
+            with requests.get(url, stream=True, timeout=30) as response:
+                response.raise_for_status()
+                
+                # Get file info
+                file_size = int(response.headers.get("content-length", 0))
+                filename = self._extract_filename(url, response.headers)
+                
+                # Stream to memory
+                buffer = BytesIO()
+                for chunk in response.iter_content(chunk_size=8192):
+                    buffer.write(chunk)
+                
+                buffer.seek(0)
+                return (True, buffer, filename, file_size)
+                
+        except Exception as e:
+            return (False, str(e), None, None)
+
+    async def _start_handler(self, update: Update, context: CallbackContext):
+        await update.message.reply_text(
+            "🚀 <b>Terabox Downloader Bot</b>\n\n"
+            "Send me a public Terabox link and I'll download it for you!\n\n"
+            "⚠️ <i>Only works with public links (no login required)</i>"
+        )
+
+    async def _help_handler(self, update: Update, context: CallbackContext):
+        await update.message.reply_text(
+            "📝 <b>How to use:</b>\n"
+            "1. Find a Terabox file (must be public)\n"
+            "2. Copy the share link (should look like terabox.com/s/...)\n"
+            "3. Paste it here\n\n"
+            "⚙️ <b>Features:</b>\n"
+            "- Supports files up to 2GB (Telegram limit)\n"
+            "- Auto-detects file type\n"
+            "- Progress tracking\n\n"
+            "⏳ <b>Rate limit:</b> 1 request every 5 seconds"
+        )
+
+    async def _message_handler(self, update: Update, context: CallbackContext):
+        user_id = update.effective_user.id
+        url = update.message.text.strip()
+
+        # Rate limiting check
+        if self._check_rate_limit(user_id):
+            await update.message.reply_text(
+                "⏳ Please wait 5 seconds between requests"
+            )
+            return
+
+        # URL validation
+        if not self._validate_url(url):
+            await update.message.reply_text(
+                "❌ Invalid Terabox URL. Must be in format:\n"
+                "<code>https://terabox.com/s/...</code>"
+            )
+            return
+
+        # Start processing
+        status_msg = await update.message.reply_text(
+            "⏳ Checking link..."
+        )
+
+        # Download file
+        success, result, filename, file_size = self._download_file(url)
+
+        if not success:
+            await status_msg.edit_text(
+                f"❌ Download failed:\n<code>{result}</code>"
+            )
+            return
+
+        # Check file size
+        if file_size > 1.8 * 1024 * 1024 * 1024:  # 1.8GB
+            await status_msg.edit_text(
+                "⚠️ File too large (max 2GB supported by Telegram)"
+            )
+            return
+
+        # Send file
+        await status_msg.edit_text(
+            f"⬆️ Uploading {filename} ({file_size/1024/1024:.1f}MB)..."
+        )
+        
+        try:
+            await update.message.reply_document(
+                document=InputFile(result, filename=filename),
+                caption="✅ Download complete!"
+            )
+            await status_msg.delete()
+        except Exception as e:
+            await status_msg.edit_text(
+                f"❌ Upload failed:\n<code>{e}</code>"
+            )
+
+    def run(self):
+        self.updater.start_polling(
+            drop_pending_updates=True,
+            timeout=30,
+            read_latency=5
+        )
+        print("Bot is running... Press Ctrl+C to stop")
+        self.updater.idle()
+
+
+if __name__ == "__main__":
+    try:
+        bot = TeraboxDownloaderBot()
+        bot.run()
+    except Exception as e:
+        print(f"❌ Bot failed to start: {e}")
