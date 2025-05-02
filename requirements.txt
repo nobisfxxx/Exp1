@@ -1,2 +1,5 @@
-instagrapi==2.1.3
-Pillow>=8.1.1
+python-telegram-bot==20.3  # Modern version with async support
+requests==2.31.0           # For HTTP requests with security fixes
+urllib3==2.0.7             # Required by requests (with latest security patches)
+python-dotenv==1.0.0       # For local environment variable loading (optional)
+tqdm==4.66.1               # For progress bars (if adding console logging)
