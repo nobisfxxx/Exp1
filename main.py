@@ -2,9 +2,11 @@
 import os
 import time
 import logging
+import asyncio
+import signal
 from io import BytesIO
 from urllib.parse import urlparse
-import requests
+import aiohttp
 from telegram import Update, InputFile
 from telegram.ext import (
     Application,
@@ -40,9 +42,22 @@ class TeraboxDownloaderBot:
             
         # Rate limiting dictionary
         self.user_cooldown = {}
+        self.session = None
 
         # Register handlers
         self._register_handlers()
+
+    async def init_session(self):
+        """Initialize aiohttp session"""
+        self.session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30),
+            headers={"User-Agent": "TeraboxDownloader/1.0"}
+        )
+
+    async def close_session(self):
+        """Close aiohttp session"""
+        if self.session:
+            await self.session.close()
 
     def _check_rate_limit(self, user_id: int) -> bool:
         """Check if user is rate limited"""
@@ -76,26 +91,27 @@ class TeraboxDownloaderBot:
 
     async def _download_file(self, url: str) -> tuple:
         """Download file with progress tracking"""
-        try:
-            async with requests.Session() as session:
-                # First request to get file info
-                async with session.head(url, allow_redirects=True, timeout=10) as head_resp:
-                    head_resp.raise_for_status()
-                    file_size = int(head_resp.headers.get("content-length", 0))
-                    filename = self._extract_filename(url, head_resp.headers)
+        if not self.session:
+            await self.init_session()
 
-                # Stream download
-                buffer = BytesIO()
-                downloaded = 0
-                async with session.get(url, timeout=30, stream=True) as response:
-                    response.raise_for_status()
-                    async for chunk in response.content.iter_chunked(8192):
-                        buffer.write(chunk)
-                        downloaded += len(chunk)
-                        
-                buffer.seek(0)
-                return (True, buffer, filename, file_size)
+        try:
+            async with self.session.head(url, allow_redirects=True) as head_resp:
+                head_resp.raise_for_status()
+                file_size = int(head_resp.headers.get("content-length", 0))
+                filename = self._extract_filename(url, head_resp.headers)
+
+            buffer = BytesIO()
+            downloaded = 0
+            async with self.session.get(url) as response:
+                response.raise_for_status()
                 
+                async for chunk in response.content.iter_chunked(8192):
+                    buffer.write(chunk)
+                    downloaded += len(chunk)
+                    
+            buffer.seek(0)
+            return (True, buffer, filename, file_size)
+            
         except Exception as e:
             logger.error(f"Download failed: {e}")
             return (False, str(e), None, None)
@@ -126,12 +142,10 @@ class TeraboxDownloaderBot:
         message = update.message
         url = message.text.strip()
 
-        # Rate limiting check
         if self._check_rate_limit(user.id):
             await message.reply_text("⏳ Please wait 5 seconds between requests")
             return
 
-        # URL validation
         if not self._validate_url(url):
             await message.reply_text(
                 "❌ Invalid Terabox URL. Must be in format:\n"
@@ -140,18 +154,15 @@ class TeraboxDownloaderBot:
             )
             return
 
-        # Start processing
         status_msg = await message.reply_text("⏳ Checking link...")
 
-        # Download file
         success, result, filename, file_size = await self._download_file(url)
 
         if not success:
             await status_msg.edit_text(f"❌ Download failed:\n<code>{result}</code>")
             return
 
-        # Check file size
-        max_size = 1.8 * 1024 * 1024 * 1024  # 1.8GB (leaving buffer)
+        max_size = 1.8 * 1024 * 1024 * 1024  # 1.8GB buffer
         if file_size > max_size:
             await status_msg.edit_text(
                 f"⚠️ File too large ({file_size/1024/1024:.1f}MB). "
@@ -159,7 +170,6 @@ class TeraboxDownloaderBot:
             )
             return
 
-        # Send file
         await status_msg.edit_text(f"⬆️ Uploading {filename}...")
         
         try:
@@ -185,18 +195,28 @@ class TeraboxDownloaderBot:
         for handler in handlers:
             self.application.add_handler(handler)
 
-    def run(self):
-        """Run the bot"""
-        self.application.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES
-        )
+    async def run(self):
+        """Run the bot with graceful shutdown"""
+        await self.init_session()
+        
+        # Register signal handlers
+        stop_event = asyncio.Event()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda *_: stop_event.set())
+        
+        async with self.application:
+            await self.application.start()
+            logger.info("Bot is running...")
+            await stop_event.wait()  # Wait until shutdown signal
+            logger.info("Shutting down gracefully...")
+            await self.application.stop()
+            await self.close_session()
+            logger.info("Bot stopped")
 
 if __name__ == "__main__":
     try:
         bot = TeraboxDownloaderBot()
-        logger.info("Bot is starting...")
-        bot.run()
+        asyncio.run(bot.run())
     except Exception as e:
         logger.critical(f"Bot failed to start: {e}")
         raise
