@@ -6,7 +6,7 @@ import time
 import logging
 import asyncio
 from io import BytesIO
-from urllib.parse import urlparse, unquote, parse_qs
+from urllib.parse import urlparse, unquote
 import aiohttp
 from telegram import Update, InputFile
 from telegram.ext import (
@@ -32,7 +32,7 @@ class TeraboxDownloaderBot:
     def __init__(self):
         self.token = os.getenv("TELEGRAM_BOT_TOKEN")
         if not self.token:
-            raise ValueError("Missing TELEGRAM_BOT_TOKEN environment variable")
+            raise ValueError("Missing TELEGRAM_BOT_TOKEN")
         
         self.application = Application.builder() \
             .token(self.token) \
@@ -48,13 +48,16 @@ class TeraboxDownloaderBot:
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=120),
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "video/webm,video/ogg,video/*;q=0.9",
                 "Referer": "https://www.terabox.com/",
-                "Origin": "https://www.terabox.com"
+                "Origin": "https://www.terabox.com",
+                "Sec-Fetch-Dest": "video",
+                "Sec-Fetch-Mode": "no-cors",
+                "Sec-Fetch-Site": "cross-site"
             }
         )
-        logger.info("Bot started with enhanced session headers")
+        logger.info("Bot started with browser-like headers")
 
     async def on_shutdown(self, app):
         """Cleanup resources"""
@@ -63,170 +66,102 @@ class TeraboxDownloaderBot:
         logger.info("Bot shutdown complete")
 
     def _clean_url(self, url: str) -> str:
-        """Standardize Terabox URLs and remove tracking"""
+        """Standardize Terabox URLs"""
         url = unquote(url)
-        domains = ["terasharelink.com", "1024terabox.com", "terabox.app", "www.terabox.com"]
+        domains = ["terasharelink.com", "1024terabox.com", "terabox.app"]
         for domain in domains:
             url = url.replace(domain, "terabox.com")
         return url.split('?')[0].split('#')[0]
 
     def _is_valid_terabox_url(self, url: str) -> bool:
-        """Strict URL validation"""
+        """Validate Terabox URLs"""
         try:
             parsed = urlparse(url)
             return all([
                 parsed.scheme in ("http", "https"),
                 "terabox.com" in parsed.netloc,
-                any(parsed.path.startswith(p) for p in ("/s/", "/sharing/", "/share/", "/w/")),
-                len(parsed.path.split('/')[-1]) >= 8  # Minimum ID length
+                any(parsed.path.startswith(p) for p in ("/s/", "/sharing/", "/w/")),
+                len(parsed.path.split('/')[-1]) >= 8
             ])
         except Exception as e:
             logger.error(f"URL validation failed: {e}")
             return False
 
-    async def _extract_video_from_api(self, share_id: str) -> str:
-        """Use Terabox's internal API to get direct download URL"""
+    async def _get_direct_video_url(self, url: str) -> str:
+        """Get direct video URL through Terabox's API"""
+        share_id = urlparse(url).path.split('/')[-1]
         api_url = f"https://www.terabox.com/api/shorturlinfo?shorturl={share_id}"
         
         async with self.session.get(api_url) as response:
             data = await response.json()
-            
             if data.get("errno") != 0:
-                raise ValueError("API error: " + data.get("errmsg", "Unknown error"))
-            
-            if not data.get("dlink"):
-                raise ValueError("No download link in API response")
-            
+                raise ValueError("API error: " + data.get("errmsg", "Invalid response"))
             return data["dlink"]
 
-    async def _extract_video_from_page(self, url: str) -> str:
-        """Advanced parsing for modern Terabox pages"""
+    async def _download_video(self, url: str) -> tuple:
+        """Download video with verification"""
         try:
             async with self.session.get(url) as response:
-                html = await response.text()
+                # Verify content is video
+                content_type = response.headers.get('Content-Type', '').lower()
+                if not any(x in content_type for x in ['video/', 'octet-stream']):
+                    first_chunk = await response.content.read(512)
+                    if b'html' in first_chunk.lower():
+                        raise ValueError("Received HTML instead of video")
+                    response.content._buffer = first_chunk + await response.content.read()
                 
-                # Method 1: Find JSON-LD data
-                ld_json = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL)
-                if ld_json:
-                    try:
-                        data = json.loads(ld_json.group(1))
-                        if data.get("@type") == "VideoObject" and data.get("contentUrl"):
-                            return data["contentUrl"]
-                    except json.JSONDecodeError:
-                        pass
+                # Stream download
+                buffer = BytesIO()
+                file_size = int(response.headers.get('content-length', 0))
+                filename = self._extract_filename(url, response.headers)
                 
-                # Method 2: Find window.__DATA__
-                js_data = re.search(r'window\.__DATA__\s*=\s*({.*?});', html, re.DOTALL)
-                if js_data:
-                    try:
-                        data = json.loads(js_data.group(1))
-                        if data.get("videoInfo", {}).get("video_url"):
-                            return data["videoInfo"]["video_url"]
-                    except json.JSONDecodeError:
-                        pass
+                async for chunk in response.content.iter_chunked(8192):
+                    buffer.write(chunk)
                 
-                # Method 3: Find direct MP4 links
-                video_url = re.search(
-                    r'source\s+src="(https?://[^"]+\.mp4)"',
-                    html,
-                    re.IGNORECASE
-                )
-                if video_url:
-                    return video_url.group(1)
-                
-                raise ValueError("No video source found in page")
+                buffer.seek(0)
+                return (True, buffer, filename, file_size)
         except Exception as e:
-            raise ValueError(f"Page parsing failed: {str(e)}")
+            raise ValueError(f"Download failed: {str(e)}")
 
     def _extract_filename(self, url: str, headers: dict) -> str:
-        """Smart filename extraction"""
+        """Extract filename from headers or URL"""
         # From Content-Disposition
         if "content-disposition" in headers:
             try:
                 cd = headers["content-disposition"]
                 if "filename=" in cd:
-                    fname = cd.split("filename=")[1].split(";")[0].strip('\"\'')
-                    if '.' in fname:
-                        return unquote(fname)
-            except Exception as e:
-                logger.warning(f"Content-Disposition parse failed: {e}")
-
+                    return cd.split("filename=")[1].split(";")[0].strip('\"\'')
+            except Exception:
+                pass
+        
         # From URL
-        basename = unquote(os.path.basename(urlparse(url).path)) or "terabox_video"
-        if not basename.lower().endswith(('.mp4','.mkv','.mov','.avi','.webm')):
+        basename = os.path.basename(urlparse(url).path) or "terabox_video.mp4"
+        if not basename.lower().endswith(('.mp4','.mkv','.mov','.avi')):
             basename += ".mp4"
-            
-        return re.sub(r'[^\w\-_. ()[\]]', '', basename)[:128]
+        return re.sub(r'[^\w\-_. ]', '', basename)
 
-    async def _download_video(self, url: str) -> tuple:
-        """Robust video downloader"""
-        for attempt in range(3):
-            try:
-                async with self.session.get(url) as response:
-                    response.raise_for_status()
-                    
-                    # Verify content
-                    content_type = response.headers.get('Content-Type', '').lower()
-                    if not any(x in content_type for x in ['video/', 'octet-stream']):
-                        first_bytes = await response.content.read(512)
-                        if b'html' in first_bytes.lower():
-                            raise ValueError("Received HTML instead of video")
-                        response.content._buffer = first_bytes + await response.content.read()
-                    
-                    # Stream download
-                    buffer = BytesIO()
-                    file_size = int(response.headers.get('content-length', 0))
-                    filename = self._extract_filename(url, response.headers)
-                    
-                    async for chunk in response.content.iter_chunked(8192):
-                        buffer.write(chunk)
-                    
-                    buffer.seek(0)
-                    return (True, buffer, filename, file_size)
-                    
-            except Exception as e:
-                if attempt == 2:
-                    raise
-                await asyncio.sleep(2 ** attempt)
-
-    async def _process_video_url(self, url: str) -> tuple:
-        """Main processing pipeline with multiple fallbacks"""
+    async def _process_url(self, url: str) -> tuple:
+        """Process URL through all available methods"""
         try:
-            # Try direct download first
+            # Method 1: Try direct download
             return await self._download_video(url)
-        except Exception as e:
-            logger.info(f"Direct download failed ({str(e)}), trying API...")
+        except Exception as e1:
+            logger.info(f"Direct failed: {str(e1)}")
             
             try:
-                # Extract share ID and try API
-                share_id = urlparse(url).path.split('/')[-1]
-                api_url = await self._extract_video_from_api(share_id)
-                return await self._download_video(api_url)
-            except Exception as api_error:
-                logger.info(f"API failed ({str(api_error)}), trying page parsing...")
-                
-                try:
-                    # Final fallback to HTML parsing
-                    video_url = await self._extract_video_from_page(url)
-                    return await self._download_video(video_url)
-                except Exception as parse_error:
-                    raise ValueError(
-                        f"All methods failed:\n"
-                        f"1. Direct: {str(e)}\n"
-                        f"2. API: {str(api_error)}\n"
-                        f"3. Parser: {str(parse_error)}"
-                    )
+                # Method 2: Use API
+                direct_url = await self._get_direct_video_url(url)
+                return await self._download_video(direct_url)
+            except Exception as e2:
+                logger.info(f"API failed: {str(e2)}")
+                raise ValueError(f"All methods failed:\n1. {str(e1)}\n2. {str(e2)}")
 
     async def start_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
         await update.message.reply_text(
             "🎬 <b>Terabox Video Downloader</b>\n\n"
-            "Send me a Terabox video link and I'll fetch it for you!\n\n"
-            "⚠️ <i>Works with most public Terabox links</i>\n"
-            "🔗 <i>Supported formats:</i>\n"
-            "- terabox.com/s/...\n"
-            "- terabox.com/sharing/...\n"
-            "- terabox.com/share/..."
+            "Send me a Terabox video link and I'll download it for you!\n\n"
+            "⚠️ <i>Works with most public links (terabox.com/s/...)</i>"
         )
 
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -236,10 +171,9 @@ class TeraboxDownloaderBot:
         
         if not self._is_valid_terabox_url(url):
             await update.message.reply_text(
-                "❌ <b>Invalid Link Format</b>\n\n"
-                "Please send a valid Terabox link like:\n"
-                "<code>https://terabox.com/s/123abcde</code>\n"
-                "<code>https://www.terabox.com/sharing/xyz7890</code>",
+                "❌ Invalid Terabox link format!\n"
+                "Example valid link:\n"
+                "<code>https://terabox.com/s/123abcde</code>",
                 parse_mode="HTML"
             )
             return
@@ -247,7 +181,7 @@ class TeraboxDownloaderBot:
         msg = await update.message.reply_text("🔍 Processing your link...")
         
         try:
-            success, data, filename, size = await self._process_video_url(url)
+            success, data, filename, size = await self._process_url(url)
             
             if not success:
                 raise ValueError(data)
@@ -257,23 +191,21 @@ class TeraboxDownloaderBot:
                 caption=f"🎥 {filename}",
                 duration=int(size/(1024*250)) if size else None,
                 supports_streaming=True,
-                read_timeout=180,
-                write_timeout=180
+                read_timeout=120,
+                write_timeout=120
             )
             await msg.delete()
             
         except Exception as e:
-            error_msg = (
-                "❌ <b>Download Failed</b>\n\n"
-                f"<i>Reason:</i> {str(e)}\n\n"
-                "<b>Try this:</b>\n"
+            await msg.edit_text(
+                f"❌ <b>Download Failed</b>\n\n"
+                f"{str(e)}\n\n"
+                "<b>Workaround:</b>\n"
                 "1. Open link in browser\n"
-                "2. Wait for video to load completely\n"
-                "3. Right-click video → <i>'Copy video address'</i>\n"
-                "4. Send that direct URL to me"
+                "2. Right-click video → 'Copy video address'\n"
+                "3. Send that URL to me",
+                parse_mode="HTML"
             )
-            await msg.edit_text(error_msg, parse_mode="HTML")
-            
         finally:
             if 'data' in locals() and data:
                 data.close()
@@ -289,20 +221,13 @@ class TeraboxDownloaderBot:
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Log errors"""
         logger.error(f"Update {update} caused error: {context.error}", exc_info=True)
-        if update.message:
-            await update.message.reply_text(
-                "⚠️ <b>Bot Error</b>\n\n"
-                "Please try again later or contact support",
-                parse_mode="HTML"
-            )
 
     def run(self):
         """Start the bot"""
         logger.info("Starting Terabox Video Downloader Bot...")
         self.application.run_polling(
             drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES,
-            pool_timeout=120
+            allowed_updates=Update.ALL_TYPES
         )
 
 if __name__ == "__main__":
