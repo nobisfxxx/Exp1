@@ -64,8 +64,6 @@ class TeraboxDownloaderBot:
         url = (url.replace("terasharelink.com", "terabox.com")
                   .replace("1024terabox.com", "terabox.com")
                   .replace("terabox.app", "terabox.com"))
-        
-        # Remove tracking parameters
         return url.split('?')[0].split('#')[0]
 
     def _is_valid_terabox_url(self, url: str) -> bool:
@@ -76,7 +74,7 @@ class TeraboxDownloaderBot:
                 parsed.scheme in ("http", "https"),
                 "terabox.com" in parsed.netloc,
                 any(parsed.path.startswith(p) for p in ("/s/", "/sharing/")),
-                not parsed.path.endswith(('.js','.css','.html'))  # Block disguised files
+                not parsed.path.endswith(('.js','.css','.html'))
             ])
         except Exception as e:
             logger.error(f"URL validation failed: {e}")
@@ -84,35 +82,29 @@ class TeraboxDownloaderBot:
 
     def _extract_filename(self, url: str, headers: dict) -> str:
         """Smart filename extraction"""
-        # From Content-Disposition
         if "content-disposition" in headers:
             try:
                 cd = headers["content-disposition"]
                 if "filename=" in cd:
                     fname = cd.split("filename=")[1].split(";")[0].strip('\"\'')
-                    if '.' in fname:  # Has extension
+                    if '.' in fname:
                         return fname
             except Exception:
                 pass
         
-        # From URL path
-        path = urlparse(url).path
-        basename = os.path.basename(path) or "terabox_video"
-        
-        # Ensure video extension
+        basename = os.path.basename(urlparse(url).path) or "terabox_video"
         if not basename.lower().endswith(('.mp4','.mkv','.mov','.avi')):
             basename += ".mp4"
-            
-        return re.sub(r'[^\w\-_. ]', '', basename)  # Sanitize
+        return re.sub(r'[^\w\-_. ]', '', basename)
 
     async def _get_real_video_url(self, url: str) -> str:
         """Resolve redirects to find actual video"""
         async with self.session.head(url, allow_redirects=True) as resp:
             final_url = str(resp.url)
             
-            # Verify final URL is a video
-            if (any(x in final_url for x in ['.mp4','.mkv','.mov']) or \
-               ('video/' in resp.headers.get('Content-Type','')):
+            # Fixed parentheses in this condition
+            if (any(x in final_url for x in ['.mp4','.mkv','.mov']) or 
+                'video/' in resp.headers.get('Content-Type','')):
                 return final_url
             
             raise ValueError("No video found after redirect")
@@ -125,11 +117,9 @@ class TeraboxDownloaderBot:
             async with self.session.get(video_url) as response:
                 response.raise_for_status()
                 
-                # Verify content type
                 if 'video/' not in response.headers.get('Content-Type',''):
                     raise ValueError("Not a video file")
                 
-                # Stream download
                 buffer = BytesIO()
                 file_size = int(response.headers.get('content-length', 0))
                 filename = self._extract_filename(video_url, response.headers)
@@ -177,7 +167,7 @@ class TeraboxDownloaderBot:
             await update.message.reply_video(
                 video=InputFile(data, filename=filename),
                 caption=f"📹 {filename}",
-                duration=int(size/(1024*250)),  # Approximate duration
+                duration=int(size/(1024*250)) if size else None,
                 supports_streaming=True,
                 read_timeout=60,
                 write_timeout=60
@@ -210,8 +200,7 @@ class TeraboxDownloaderBot:
         logger.info("Starting Terabox Video Downloader Bot...")
         self.application.run_polling(
             drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES,
-            close_loop=False
+            allowed_updates=Update.ALL_TYPES
         )
 
 if __name__ == "__main__":
